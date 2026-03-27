@@ -33,8 +33,8 @@ class AudioChannelManager(private val context: Context) {
         ttsLeft = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsLeft?.language = localeLeft
-                ttsLeft?.setSpeechRate(0.9f)   // Mais lento e natural
-                ttsLeft?.setPitch(1.0f)         // Tom normal
+                ttsLeft?.setSpeechRate(0.85f)  // Mais lento
+                ttsLeft?.setPitch(0.9f)         // Tom mais grave
                 isTtsLeftReady = true
                 if (isTtsRightReady) onReady()
             }
@@ -42,17 +42,25 @@ class AudioChannelManager(private val context: Context) {
         ttsRight = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsRight?.language = localeRight
-                ttsRight?.setSpeechRate(0.9f)
-                ttsRight?.setPitch(1.0f)
+                ttsRight?.setSpeechRate(0.85f)
+                ttsRight?.setPitch(0.9f)
                 isTtsRightReady = true
                 if (isTtsLeftReady) onReady()
             }
         }
     }
 
-    // Configura idioma dinamicamente (para suporte a múltiplos idiomas)
-    fun setLanguageLeft(locale: Locale) { ttsLeft?.language = locale }
-    fun setLanguageRight(locale: Locale) { ttsRight?.language = locale }
+    fun setLanguageLeft(locale: Locale) {
+        ttsLeft?.language = locale
+        ttsLeft?.setSpeechRate(0.85f)
+        ttsLeft?.setPitch(0.9f)
+    }
+
+    fun setLanguageRight(locale: Locale) {
+        ttsRight?.language = locale
+        ttsRight?.setSpeechRate(0.85f)
+        ttsRight?.setPitch(0.9f)
+    }
 
     enum class Channel { LEFT, RIGHT }
 
@@ -70,11 +78,6 @@ class AudioChannelManager(private val context: Context) {
             val f = synthesizeToFile(ttsRight, text, "right_${System.currentTimeMillis()}")
             f?.let { playOnChannel(it, Channel.RIGHT) }
         }
-    }
-
-    fun speakBoth(textLeft: String, textRight: String) {
-        speakLeft(textLeft)
-        speakRight(textRight)
     }
 
     private fun playOnChannel(wavFile: File, channel: Channel) {
