@@ -21,8 +21,7 @@ class MainActivity : AppCompatActivity() {
     private var isAudioReady = false
     private var isListening = false
 
-    // Cole sua chave aqui
-    private val API_KEY = "SUA_CHAVE_AQUI"
+    private val API_KEY = "AIzaSyAmTZS9c0xiaJZMe62s_AgsONhOsyboMFI"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,34 +46,32 @@ class MainActivity : AppCompatActivity() {
         speechManager = SpeechManager(this)
         speechManager.init()
 
-        // Ouviu inglês → traduz para português → fala no canal direito
-        speechManager.onSpeechLeft = { text ->
-            runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "EN: $text" }
+        // Um único callback — decide o canal pelo idioma detectado
+        speechManager.onSpeechDetected = { text, language ->
             lifecycleScope.launch {
-                val translated = translationManager.translate(text, "en", "pt")
-                runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "PT: $translated" }
-                if (isAudioReady) audioManager.speakRight(translated)
-            }
-        }
-
-        // Ouviu português → traduz para inglês → fala no canal esquerdo
-        speechManager.onSpeechRight = { text ->
-            runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "PT: $text" }
-            lifecycleScope.launch {
-                val translated = translationManager.translate(text, "pt", "en")
-                runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "EN: $translated" }
-                if (isAudioReady) audioManager.speakLeft(translated)
+                if (language == "en") {
+                    // Inglês detectado → traduz para PT → fala no canal DIREITO
+                    runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "EN: $text" }
+                    val translated = translationManager.translate(text, "en", "pt")
+                    runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "PT: $translated" }
+                    if (isAudioReady) audioManager.speakRight(translated)
+                } else {
+                    // Português detectado → traduz para EN → fala no canal ESQUERDO
+                    runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "PT: $text" }
+                    val translated = translationManager.translate(text, "pt", "en")
+                    runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "EN: $translated" }
+                    if (isAudioReady) audioManager.speakLeft(translated)
+                }
             }
         }
 
         findViewById<Button>(R.id.btn_listen).setOnClickListener {
             if (!isListening) {
-                speechManager.startListeningLeft("en-US")
-                speechManager.startListeningRight("pt-BR")
+                speechManager.startListening()
                 isListening = true
                 findViewById<Button>(R.id.btn_listen).text = "Parar"
             } else {
-                speechManager.stopAll()
+                speechManager.stopListening()
                 isListening = false
                 findViewById<Button>(R.id.btn_listen).text = "Iniciar Conversa"
             }

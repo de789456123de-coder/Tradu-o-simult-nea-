@@ -14,69 +14,77 @@ class SpeechManager(private val context: Context) {
         private const val TAG = "SpeechManager"
     }
 
-    private var recognizerLeft: SpeechRecognizer? = null
-    private var recognizerRight: SpeechRecognizer? = null
+    private var recognizer: SpeechRecognizer? = null
+    private var isListening = false
 
-    var onSpeechLeft: ((String) -> Unit)? = null
-    var onSpeechRight: ((String) -> Unit)? = null
+    // Callback com o texto E o idioma detectado ("pt" ou "en")
+    var onSpeechDetected: ((text: String, language: String) -> Unit)? = null
 
     fun init() {
-        recognizerLeft = SpeechRecognizer.createSpeechRecognizer(context)
-        recognizerRight = SpeechRecognizer.createSpeechRecognizer(context)
-        recognizerLeft?.setRecognitionListener(buildListener("LEFT") { text ->
-            onSpeechLeft?.invoke(text)
-        })
-        recognizerRight?.setRecognitionListener(buildListener("RIGHT") { text ->
-            onSpeechRight?.invoke(text)
-        })
-    }
-
-    fun startListeningLeft(languageCode: String = "en-US") {
-        recognizerLeft?.startListening(buildIntent(languageCode))
-    }
-
-    fun startListeningRight(languageCode: String = "pt-BR") {
-        recognizerRight?.startListening(buildIntent(languageCode))
-    }
-
-    fun stopAll() {
-        recognizerLeft?.stopListening()
-        recognizerRight?.stopListening()
-    }
-
-    private fun buildIntent(languageCode: String): Intent {
-        return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageCode)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-        }
-    }
-
-    private fun buildListener(channel: String, onResult: (String) -> Unit): RecognitionListener {
-        return object : RecognitionListener {
+        recognizer = SpeechRecognizer.createSpeechRecognizer(context)
+        recognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
             override fun onEndOfSpeech() {}
+
             override fun onResults(results: Bundle?) {
-                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
-                Log.d(TAG, "$channel: $text")
-                onResult(text)
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val text = matches?.firstOrNull() ?: return
+
+                // Detecta idioma pelo texto reconhecido
+                val lang = results.getString("android.speech.extra.LANGUAGE") ?: detectLanguage(text)
+                Log.d(TAG, "Texto: $text | Idioma: $lang")
+                onSpeechDetected?.invoke(text, lang)
+
+                // Reinicia automaticamente
+                if (isListening) startListening()
             }
-            override fun onPartialResults(partialResults: Bundle?) {}
+
             override fun onError(error: Int) {
-                Log.e(TAG, "$channel erro: $error")
-                if (channel == "LEFT") startListeningLeft()
-                else startListeningRight()
+                Log.e(TAG, "Erro: $error")
+                if (isListening) startListening()
             }
+
+            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+    }
+
+    fun startListening() {
+        isListening = true
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            // Aceita múltiplos idiomas
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR,en-US")
+            putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US", "pt-BR"))
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
+        recognizer?.startListening(intent)
+    }
+
+    fun stopListening() {
+        isListening = false
+        recognizer?.stopListening()
+    }
+
+    // Detecção simples por palavras comuns
+    private fun detectLanguage(text: String): String {
+        val lower = text.lowercase()
+        val ptWords = listOf("que", "não", "sim", "ola", "olá", "como", "para", "por", "com", "uma", "você", "estou", "obrigado", "bom", "dia", "boa", "tarde", "noite")
+        val enWords = listOf("the", "and", "is", "are", "you", "what", "how", "hello", "thank", "good", "morning", "please", "yes", "no", "can", "will")
+
+        val ptScore = ptWords.count { lower.contains(it) }
+        val enScore = enWords.count { lower.contains(it) }
+
+        return if (enScore > ptScore) "en" else "pt"
     }
 
     fun release() {
-        recognizerLeft?.destroy()
-        recognizerRight?.destroy()
+        isListening = false
+        recognizer?.destroy()
     }
 }
