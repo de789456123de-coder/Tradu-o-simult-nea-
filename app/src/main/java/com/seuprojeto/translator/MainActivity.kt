@@ -52,10 +52,17 @@ class MainActivity : AppCompatActivity() {
             onReady = {
                 runOnUiThread {
                     isAudioReady = true
-                    Toast.makeText(this, "Pronto!", Toast.LENGTH_SHORT).show()
+                    setStatus("✅ Pronto!")
                 }
             }
         )
+
+        // Teste imediato de TTS ao abrir o app
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(2000)
+            setStatus("🔊 Testando voz...")
+            audioManager.speakLeft("Teste de voz esquerda")
+        }
 
         speechManager = SpeechManager(this)
         speechManager.init()
