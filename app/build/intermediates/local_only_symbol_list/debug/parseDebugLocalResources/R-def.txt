@@ -1,0 +1,7 @@
+R_DEF: Internal format may change without notice
+local
+id btn_test_both
+id btn_test_left
+id btn_test_right
+layout activity_main
+string app_name
