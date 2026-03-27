@@ -3,7 +3,9 @@ package com.seuprojeto.translator
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.widget.*
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -21,56 +23,59 @@ class MainActivity : AppCompatActivity() {
 
     private val API_KEY = "AIzaSyAmTZS9c0xiaJZMe62s_AgsONhOsyboMFI"
 
-    // Idioma "base" da conversa — o outro lado sempre recebe a tradução
-    // Ex: userLang = "pt" → fala PT, ouve EN / fala EN, ouve PT
-    private var userLang = "pt"
+    private var leftLangCode = "pt"
+    private var rightLangCode = "en"
+    private var leftLangName = "Português"
+    private var rightLangName = "Inglês"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        requestMicPermission()
+        // Recebe idiomas da tela de configuração
+        leftLangCode = intent.getStringExtra("LEFT_LANG_CODE") ?: "pt"
+        rightLangCode = intent.getStringExtra("RIGHT_LANG_CODE") ?: "en"
+        leftLangName = intent.getStringExtra("LEFT_LANG_NAME") ?: "Português"
+        rightLangName = intent.getStringExtra("RIGHT_LANG_NAME") ?: "Inglês"
 
+        // Atualiza labels
+        findViewById<TextView>(R.id.tv_left).text = "$leftLangName: aguardando..."
+        findViewById<TextView>(R.id.tv_right).text = "$rightLangName: aguardando..."
+
+        requestMicPermission()
         translationManager = TranslationManager(API_KEY)
 
         audioManager = AudioChannelManager(this)
-        audioManager.init(onReady = {
-            runOnUiThread {
-                isAudioReady = true
-                Toast.makeText(this, "Pronto!", Toast.LENGTH_SHORT).show()
+        audioManager.init(
+            localeLeft = Locale(leftLangCode),
+            localeRight = Locale(rightLangCode),
+            onReady = {
+                runOnUiThread {
+                    isAudioReady = true
+                    Toast.makeText(this, "Pronto!", Toast.LENGTH_SHORT).show()
+                }
             }
-        })
+        )
 
         speechManager = SpeechManager(this)
         speechManager.init()
 
         speechManager.onSpeechDetected = { text, _ ->
             lifecycleScope.launch {
-                // Detecta idioma real via API Google
                 val detectedLang = translationManager.detectLanguage(text)
-                val targetLang = if (detectedLang == "pt") "en" else "pt"
-                val targetLocale = if (targetLang == "en") Locale.ENGLISH else Locale("pt", "BR")
 
-                runOnUiThread {
-                    if (detectedLang == "pt") {
-                        findViewById<TextView>(R.id.tv_right).text = "PT: $text"
-                    } else {
-                        findViewById<TextView>(R.id.tv_left).text = "$detectedLang: $text"
-                    }
-                }
-
-                val translated = translationManager.translate(text, detectedLang, targetLang)
-
-                runOnUiThread {
-                    if (targetLang == "pt") {
-                        findViewById<TextView>(R.id.tv_right).text = "PT: $translated"
-                        audioManager.setLanguageRight(targetLocale)
-                        if (isAudioReady) audioManager.speakRight(translated)
-                    } else {
-                        findViewById<TextView>(R.id.tv_left).text = "EN: $translated"
-                        audioManager.setLanguageLeft(targetLocale)
-                        if (isAudioReady) audioManager.speakLeft(translated)
-                    }
+                if (detectedLang == leftLangCode || isClosestTo(detectedLang, leftLangCode)) {
+                    // Fala no canal esquerdo → traduz para direito
+                    runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "$leftLangName: $text" }
+                    val translated = translationManager.translate(text, leftLangCode, rightLangCode)
+                    runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "$rightLangName: $translated" }
+                    if (isAudioReady) audioManager.speakRight(translated)
+                } else {
+                    // Fala no canal direito → traduz para esquerdo
+                    runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "$rightLangName: $text" }
+                    val translated = translationManager.translate(text, rightLangCode, leftLangCode)
+                    runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "$leftLangName: $translated" }
+                    if (isAudioReady) audioManager.speakLeft(translated)
                 }
             }
         }
@@ -88,12 +93,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btn_test_left).setOnClickListener {
-            if (isAudioReady) audioManager.speakLeft("Hello! Left channel test.")
+            if (isAudioReady) audioManager.speakLeft("Teste do canal esquerdo.")
         }
 
         findViewById<Button>(R.id.btn_test_right).setOnClickListener {
-            if (isAudioReady) audioManager.speakRight("Olá! Teste do canal direito.")
+            if (isAudioReady) audioManager.speakRight("Right channel test.")
         }
+    }
+
+    // Verifica se o idioma detectado é variante do idioma configurado
+    // Ex: "pt-BR" bate com "pt"
+    private fun isClosestTo(detected: String, configured: String): Boolean {
+        return detected.startsWith(configured) || configured.startsWith(detected)
     }
 
     private fun requestMicPermission() {
