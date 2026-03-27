@@ -61,22 +61,35 @@ class AudioChannelManager(private val context: Context) {
 
     fun speakLeft(text: String) {
         scope.launch {
+            Log.d(TAG, "speakLeft: $text | lang: $leftLangCode")
             val (langCode, voiceName) = voiceMap[leftLangCode] ?: ("pt-BR" to "pt-BR-Wavenet-A")
-            val mp3 = fetchTTS(text, langCode, voiceName) ?: return@launch
+            val mp3 = fetchTTS(text, langCode, voiceName)
+            if (mp3 == null) {
+                Log.e(TAG, "speakLeft: MP3 nulo, TTS falhou")
+                return@launch
+            }
+            Log.d(TAG, "speakLeft: MP3 recebido ${mp3.size} bytes")
             playMp3(mp3, Channel.LEFT)
         }
     }
 
     fun speakRight(text: String) {
         scope.launch {
+            Log.d(TAG, "speakRight: $text | lang: $rightLangCode")
             val (langCode, voiceName) = voiceMap[rightLangCode] ?: ("en-US" to "en-US-Wavenet-D")
-            val mp3 = fetchTTS(text, langCode, voiceName) ?: return@launch
+            val mp3 = fetchTTS(text, langCode, voiceName)
+            if (mp3 == null) {
+                Log.e(TAG, "speakRight: MP3 nulo, TTS falhou")
+                return@launch
+            }
+            Log.d(TAG, "speakRight: MP3 recebido ${mp3.size} bytes")
             playMp3(mp3, Channel.RIGHT)
         }
     }
 
     private fun fetchTTS(text: String, languageCode: String, voiceName: String): ByteArray? {
         return try {
+            Log.d(TAG, "fetchTTS: lang=$languageCode voice=$voiceName")
             val url = URL("https://texttospeech.googleapis.com/v1/text:synthesize?key=$apiKey")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
@@ -99,11 +112,21 @@ class AudioChannelManager(private val context: Context) {
             }
 
             conn.outputStream.write(body.toString().toByteArray())
+
+            val responseCode = conn.responseCode
+            Log.d(TAG, "fetchTTS: responseCode=$responseCode")
+
+            if (responseCode != 200) {
+                val error = conn.errorStream?.bufferedReader()?.readText()
+                Log.e(TAG, "fetchTTS erro: $error")
+                return null
+            }
+
             val response = conn.inputStream.bufferedReader().readText()
             val audioContent = JSONObject(response).getString("audioContent")
             Base64.decode(audioContent, Base64.DEFAULT)
         } catch (e: Exception) {
-            Log.e(TAG, "TTS erro: ${e.message}")
+            Log.e(TAG, "fetchTTS exception: ${e.message}")
             null
         }
     }
@@ -112,30 +135,32 @@ class AudioChannelManager(private val context: Context) {
         try {
             val tempFile = File(context.cacheDir, "tts_${channel}_${System.currentTimeMillis()}.mp3")
             FileOutputStream(tempFile).use { it.write(mp3Data) }
+            Log.d(TAG, "playMp3: arquivo salvo ${tempFile.absolutePath}")
 
             val player = MediaPlayer()
             player.setDataSource(tempFile.absolutePath)
+            player.prepare()
 
-            // Pan: -1.0 = só esquerdo, 1.0 = só direito, 0.0 = ambos
+            // setVolume APÓS prepare()
             when (channel) {
                 Channel.LEFT  -> player.setVolume(1.0f, 0.0f)
                 Channel.RIGHT -> player.setVolume(0.0f, 1.0f)
             }
 
-            player.prepare()
             player.start()
+            Log.d(TAG, "playMp3: tocando canal $channel")
 
             player.setOnCompletionListener {
                 it.release()
                 tempFile.delete()
+                Log.d(TAG, "playMp3: concluído e liberado")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Playback erro: ${e.message}")
+            Log.e(TAG, "playMp3 exception: ${e.message}")
         }
     }
 
     fun setLanguageLeft(lang: String) { leftLangCode = lang }
     fun setLanguageRight(lang: String) { rightLangCode = lang }
-
     fun release() { scope.cancel() }
 }
