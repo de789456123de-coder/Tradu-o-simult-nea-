@@ -3,43 +3,88 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:gravity="center"
+    android:background="#121212"
     android:padding="24dp">
 
     <TextView
-        android:id="@+id/tv_left"
+        android:id="@+id/tv_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="EN: aguardando..."
-        android:padding="12dp"
-        android:layout_marginBottom="8dp"/>
+        android:text="Tradutor Simultâneo"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="32dp"
+        android:layout_marginTop="16dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/tv_left_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎧 Canal Esquerdo"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tv_left"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="80dp"
+            android:text="aguardando..."
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:background="#1E1E1E"
+            android:padding="16dp"
+            android:layout_marginBottom="24dp"/>
+
+        <TextView
+            android:id="@+id/tv_right_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎧 Canal Direito"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tv_right"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="80dp"
+            android:text="aguardando..."
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:background="#1E1E1E"
+            android:padding="16dp"/>
+
+    </LinearLayout>
 
     <TextView
-        android:id="@+id/tv_right"
+        android:id="@+id/tv_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="PT: aguardando..."
-        android:padding="12dp"
-        android:layout_marginBottom="24dp"/>
+        android:text="● Pausado"
+        android:textColor="#888888"
+        android:textSize="13sp"
+        android:gravity="center"
+        android:layout_marginBottom="16dp"/>
 
     <Button
         android:id="@+id/btn_listen"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
         android:text="Iniciar Conversa"
-        android:layout_marginBottom="24dp"/>
-
-    <Button
-        android:id="@+id/btn_test_left"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Testar Canal ESQUERDO"
-        android:layout_marginBottom="8dp"/>
-
-    <Button
-        android:id="@+id/btn_test_right"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Testar Canal DIREITO"/>
+        android:textSize="16sp"
+        android:backgroundTint="#2196F3"
+        android:textColor="#FFFFFF"/>
 
 </LinearLayout>
