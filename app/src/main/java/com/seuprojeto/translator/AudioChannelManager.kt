@@ -33,6 +33,8 @@ class AudioChannelManager(private val context: Context) {
         ttsLeft = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsLeft?.language = localeLeft
+                ttsLeft?.setSpeechRate(0.9f)   // Mais lento e natural
+                ttsLeft?.setPitch(1.0f)         // Tom normal
                 isTtsLeftReady = true
                 if (isTtsRightReady) onReady()
             }
@@ -40,11 +42,17 @@ class AudioChannelManager(private val context: Context) {
         ttsRight = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsRight?.language = localeRight
+                ttsRight?.setSpeechRate(0.9f)
+                ttsRight?.setPitch(1.0f)
                 isTtsRightReady = true
                 if (isTtsLeftReady) onReady()
             }
         }
     }
+
+    // Configura idioma dinamicamente (para suporte a múltiplos idiomas)
+    fun setLanguageLeft(locale: Locale) { ttsLeft?.language = locale }
+    fun setLanguageRight(locale: Locale) { ttsRight?.language = locale }
 
     enum class Channel { LEFT, RIGHT }
 

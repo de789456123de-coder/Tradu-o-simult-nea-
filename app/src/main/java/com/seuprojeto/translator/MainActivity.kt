@@ -3,9 +3,7 @@ package com.seuprojeto.translator
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.widget.Button
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -23,6 +21,10 @@ class MainActivity : AppCompatActivity() {
 
     private val API_KEY = "AIzaSyAmTZS9c0xiaJZMe62s_AgsONhOsyboMFI"
 
+    // Idioma "base" da conversa — o outro lado sempre recebe a tradução
+    // Ex: userLang = "pt" → fala PT, ouve EN / fala EN, ouve PT
+    private var userLang = "pt"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -32,35 +34,43 @@ class MainActivity : AppCompatActivity() {
         translationManager = TranslationManager(API_KEY)
 
         audioManager = AudioChannelManager(this)
-        audioManager.init(
-            localeLeft = Locale.ENGLISH,
-            localeRight = Locale("pt", "BR"),
-            onReady = {
-                runOnUiThread {
-                    isAudioReady = true
-                    Toast.makeText(this, "Pronto!", Toast.LENGTH_SHORT).show()
-                }
+        audioManager.init(onReady = {
+            runOnUiThread {
+                isAudioReady = true
+                Toast.makeText(this, "Pronto!", Toast.LENGTH_SHORT).show()
             }
-        )
+        })
 
         speechManager = SpeechManager(this)
         speechManager.init()
 
-        // Um único callback — decide o canal pelo idioma detectado
-        speechManager.onSpeechDetected = { text, language ->
+        speechManager.onSpeechDetected = { text, _ ->
             lifecycleScope.launch {
-                if (language == "en") {
-                    // Inglês detectado → traduz para PT → fala no canal DIREITO
-                    runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "EN: $text" }
-                    val translated = translationManager.translate(text, "en", "pt")
-                    runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "PT: $translated" }
-                    if (isAudioReady) audioManager.speakRight(translated)
-                } else {
-                    // Português detectado → traduz para EN → fala no canal ESQUERDO
-                    runOnUiThread { findViewById<TextView>(R.id.tv_right).text = "PT: $text" }
-                    val translated = translationManager.translate(text, "pt", "en")
-                    runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "EN: $translated" }
-                    if (isAudioReady) audioManager.speakLeft(translated)
+                // Detecta idioma real via API Google
+                val detectedLang = translationManager.detectLanguage(text)
+                val targetLang = if (detectedLang == "pt") "en" else "pt"
+                val targetLocale = if (targetLang == "en") Locale.ENGLISH else Locale("pt", "BR")
+
+                runOnUiThread {
+                    if (detectedLang == "pt") {
+                        findViewById<TextView>(R.id.tv_right).text = "PT: $text"
+                    } else {
+                        findViewById<TextView>(R.id.tv_left).text = "$detectedLang: $text"
+                    }
+                }
+
+                val translated = translationManager.translate(text, detectedLang, targetLang)
+
+                runOnUiThread {
+                    if (targetLang == "pt") {
+                        findViewById<TextView>(R.id.tv_right).text = "PT: $translated"
+                        audioManager.setLanguageRight(targetLocale)
+                        if (isAudioReady) audioManager.speakRight(translated)
+                    } else {
+                        findViewById<TextView>(R.id.tv_left).text = "EN: $translated"
+                        audioManager.setLanguageLeft(targetLocale)
+                        if (isAudioReady) audioManager.speakLeft(translated)
+                    }
                 }
             }
         }
