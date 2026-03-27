@@ -6,24 +6,40 @@
     android:gravity="center"
     android:padding="24dp">
 
+    <TextView
+        android:id="@+id/tv_left"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="EN: aguardando..."
+        android:padding="12dp"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/tv_right"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="PT: aguardando..."
+        android:padding="12dp"
+        android:layout_marginBottom="24dp"/>
+
+    <Button
+        android:id="@+id/btn_listen"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Iniciar Conversa"
+        android:layout_marginBottom="24dp"/>
+
     <Button
         android:id="@+id/btn_test_left"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Testar Canal ESQUERDO"
-        android:layout_marginBottom="16dp"/>
+        android:layout_marginBottom="8dp"/>
 
     <Button
         android:id="@+id/btn_test_right"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Testar Canal DIREITO"
-        android:layout_marginBottom="16dp"/>
-
-    <Button
-        android:id="@+id/btn_test_both"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Testar AMBOS ao mesmo tempo"/>
+        android:text="Testar Canal DIREITO"/>
 
 </LinearLayout>
