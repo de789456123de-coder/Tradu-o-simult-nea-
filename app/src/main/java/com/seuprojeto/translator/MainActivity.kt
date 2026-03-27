@@ -27,9 +27,6 @@ class MainActivity : AppCompatActivity() {
     private var rightLangCode = "en"
     private var leftLangName = "Português"
     private var rightLangName = "Inglês"
-
-    // Contexto da conversa para melhorar detecção
-    private val conversationHistory = mutableListOf<String>()
     private var lastDetectedLang = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,8 +46,9 @@ class MainActivity : AppCompatActivity() {
 
         audioManager = AudioChannelManager(this)
         audioManager.init(
-            localeLeft = Locale(leftLangCode),
-            localeRight = Locale(rightLangCode),
+            apiKey = API_KEY,
+            leftLang = leftLangCode,
+            rightLang = rightLangCode,
             onReady = {
                 runOnUiThread {
                     isAudioReady = true
@@ -64,16 +62,9 @@ class MainActivity : AppCompatActivity() {
 
         speechManager.onSpeechDetected = { text, _ ->
             lifecycleScope.launch {
-                setStatus("🔄 Detectando idioma...")
-
-                // Detecção com fallback inteligente
+                setStatus("🔄 Traduzindo...")
                 val detectedLang = detectWithContext(text)
                 lastDetectedLang = detectedLang
-
-                conversationHistory.add("[$detectedLang] $text")
-                if (conversationHistory.size > 10) conversationHistory.removeAt(0)
-
-                setStatus("🔄 Traduzindo...")
 
                 if (isClosestTo(detectedLang, leftLangCode)) {
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = text }
@@ -86,7 +77,6 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = translated }
                     if (isAudioReady) audioManager.speakLeft(translated)
                 }
-
                 setStatus("● Ouvindo...")
             }
         }
@@ -108,16 +98,9 @@ class MainActivity : AppCompatActivity() {
 
     private suspend fun detectWithContext(text: String): String {
         val detected = translationManager.detectLanguage(text)
-
-        // Se detecção clara → usa ela
         if (detected == leftLangCode || detected == rightLangCode) return detected
-
-        // Se idioma detectado é variante → normaliza
         if (detected.startsWith(leftLangCode)) return leftLangCode
         if (detected.startsWith(rightLangCode)) return rightLangCode
-
-        // Fallback: usa o idioma oposto ao último detectado
-        // (Em conversa, as pessoas alternam)
         return if (lastDetectedLang == leftLangCode) rightLangCode else leftLangCode
     }
 
