@@ -16,16 +16,14 @@ import kotlin.coroutines.resume
 
 class TranslationManager(private val apiKey: String) {
 
-    companion object {
-        private const val TAG = "TranslationManager"
-    }
+    companion object { private const val TAG = "TranslationManager" }
 
     private val translators = mutableMapOf<String, com.google.mlkit.nl.translate.Translator>()
     private val langIdentifier = LanguageIdentification.getClient()
 
     private val langSignatures = mapOf(
         "pt" to listOf("que", "não", "sim", "como", "para", "com", "uma", "você",
-                       "estou", "obrigado", "então", "mas", "porque", "aqui", "isso",
+                       "estou", "obrigado", "então", "mas", "porque", "aqui",
                        "esse", "ela", "ele", "foi", "ser", "aí", "né", "tá", "pra"),
         "en" to listOf("the", "and", "is", "are", "you", "what", "how", "hello",
                        "thank", "good", "please", "yes", "can", "will", "this",
@@ -54,9 +52,7 @@ class TranslationManager(private val apiKey: String) {
                 translator.downloadModelIfNeeded()
                     .addOnSuccessListener { cont.resume(true) }
                     .addOnFailureListener { cont.resume(false) }
-            } catch (e: Exception) {
-                cont.resume(false)
-            }
+            } catch (e: Exception) { cont.resume(false) }
         }
     }
 
@@ -64,14 +60,25 @@ class TranslationManager(private val apiKey: String) {
         text: String,
         leftLang: String,
         rightLang: String,
-        lastLang: String
+        lastLang: String,
+        context: ContextManager.ConversationContext = ContextManager.ConversationContext.GENERAL
     ): String {
         val words = text.lowercase().split(" ", ",", ".", "!", "?")
-        val leftScore  = langSignatures[leftLang]?.count  { it in words } ?: 0
-        val rightScore = langSignatures[rightLang]?.count { it in words } ?: 0
-        val confidence = Math.abs(leftScore - rightScore).toFloat() / words.size.coerceAtLeast(1)
+        var leftScore  = langSignatures[leftLang]?.count  { it in words } ?: 0
+        var rightScore = langSignatures[rightLang]?.count { it in words } ?: 0
 
-        if (confidence >= 0.15f) {
+        // Boost por palavras do glossário do contexto
+        if (context != ContextManager.ConversationContext.GENERAL) {
+            val glossary = ContextManager.glossaries[context]
+            glossary?.keys?.forEach { term ->
+                if (text.lowercase().contains(term)) leftScore += 2
+            }
+        }
+
+        val confidence = Math.abs(leftScore - rightScore).toFloat() /
+            words.size.coerceAtLeast(1)
+
+        if (confidence >= 0.12f) {
             return if (leftScore > rightScore) leftLang else rightLang
         }
 
@@ -93,21 +100,26 @@ class TranslationManager(private val apiKey: String) {
         }
     }
 
-    suspend fun translate(text: String, sourceLang: String, targetLang: String): String {
+    suspend fun translate(
+        text: String,
+        sourceLang: String,
+        targetLang: String,
+        context: ContextManager.ConversationContext = ContextManager.ConversationContext.GENERAL
+    ): String {
+        // Aplica glossário antes de traduzir
+        val enriched = ContextManager.enrichTextForTranslation(text, context, sourceLang, targetLang)
         val key = "$sourceLang-$targetLang"
         val translator = translators[key]
         return if (translator != null) {
-            translateOffline(translator, text, sourceLang, targetLang)
+            translateOffline(translator, enriched)
         } else {
-            translateOnline(text, sourceLang, targetLang)
+            translateOnline(enriched, sourceLang, targetLang)
         }
     }
 
     private suspend fun translateOffline(
         translator: com.google.mlkit.nl.translate.Translator,
-        text: String,
-        sourceLang: String,
-        targetLang: String
+        text: String
     ): String {
         return suspendCancellableCoroutine { cont ->
             translator.translate(text)

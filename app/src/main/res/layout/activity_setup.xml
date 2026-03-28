@@ -1,52 +1,109 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="32dp">
+    android:background="#0A0A0F">
 
-    <TextView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Tradutor Simultâneo"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="48dp"/>
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🎧 Canal Esquerdo"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎧"
+            android:textSize="48sp"
+            android:layout_marginTop="32dp"/>
 
-    <Spinner
-        android:id="@+id/spinner_left"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="32dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tradutor Simultâneo"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginTop="12dp"/>
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🎧 Canal Direito"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Configuração da conversa"
+            android:textColor="#888888"
+            android:textSize="14sp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="32dp"/>
 
-    <Spinner
-        android:id="@+id/spinner_right"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="48dp"/>
+        <!-- Canal Esquerdo -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎧 Canal Esquerdo"
+            android:textColor="#6C6CFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"/>
 
-    <Button
-        android:id="@+id/btn_start"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Iniciar Conversa"
-        android:textSize="18sp"
-        android:padding="16dp"/>
+        <Spinner
+            android:id="@+id/spinner_left"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#12122A"
+            android:layout_marginBottom="24dp"/>
 
-</LinearLayout>
+        <!-- Canal Direito -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎧 Canal Direito"
+            android:textColor="#4CAF50"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"/>
+
+        <Spinner
+            android:id="@+id/spinner_right"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#0F1A12"
+            android:layout_marginBottom="32dp"/>
+
+        <!-- Tipo de Conversa -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="💬 Tipo de Conversa"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Escolha o contexto para tradução mais precisa"
+            android:textColor="#666666"
+            android:textSize="12sp"
+            android:layout_marginBottom="12dp"/>
+
+        <androidx.gridlayout.widget.GridLayout
+            android:id="@+id/grid_context"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="32dp"/>
+
+        <Button
+            android:id="@+id/btn_start"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▶ Iniciar Conversa"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:backgroundTint="#3D5AFE"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="32dp"/>
+
+    </LinearLayout>
+</ScrollView>
