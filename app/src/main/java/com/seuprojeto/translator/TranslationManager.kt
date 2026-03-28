@@ -183,7 +183,7 @@ class TranslationManager(private val apiKey: String) {
     }
 
     fun release() {
-        translators.values.forEach { it.close() }
+        translators.values.forEach { translator -> translator.close() }
         langIdentifier.close()
     }
 }
