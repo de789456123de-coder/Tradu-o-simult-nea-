@@ -1,10 +1,10 @@
 package com.seuprojeto.translator
 
 import android.util.Log
+import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
-import com.google.mlkit.nl.languageid.LanguageIdentification
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -40,65 +40,23 @@ class TranslationManager(private val apiKey: String) {
                        "più", "anche", "questa", "suo", "loro", "hanno")
     )
 
-    // Pré-carrega o modelo de tradução offline para um par de idiomas
     suspend fun prepareOfflineModel(sourceLang: String, targetLang: String): Boolean {
         val key = "$sourceLang-$targetLang"
         if (translators.containsKey(key)) return true
-
         return suspendCancellableCoroutine { cont ->
             try {
-                val sourceCode = toMlKitLang(sourceLang)
-                val targetCode = toMlKitLang(targetLang)
-
                 val options = TranslatorOptions.Builder()
-                    .setSourceLanguage(sourceCode)
-                    .setTargetLanguage(targetCode)
+                    .setSourceLanguage(toMlKitLang(sourceLang))
+                    .setTargetLanguage(toMlKitLang(targetLang))
                     .build()
-
                 val translator = Translation.getClient(options)
                 translators[key] = translator
-
                 translator.downloadModelIfNeeded()
-                    .addOnSuccessListener {
-                        Log.d(TAG, "Modelo offline pronto: $key")
-                        cont.resume(true)
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "Falha ao baixar modelo: ${e.message}")
-                        cont.resume(false)
-                    }
+                    .addOnSuccessListener { cont.resume(true) }
+                    .addOnFailureListener { cont.resume(false) }
             } catch (e: Exception) {
                 cont.resume(false)
             }
-        }
-    }
-
-    // Tradução offline via ML Kit
-    suspend fun translateOffline(text: String, sourceLang: String, targetLang: String): String {
-        val key = "$sourceLang-$targetLang"
-        val translator = translators[key] ?: return translateOnline(text, sourceLang, targetLang)
-
-        return suspendCancellableCoroutine { cont ->
-            translator.translate(text)
-                .addOnSuccessListener { translated -> cont.resume(translated) }
-                .addOnFailureListener {
-                    // Fallback para online se offline falhar
-                    kotlinx.coroutines.GlobalScope.kotlinx.coroutines.launch {
-                        cont.resume(translateOnline(text, sourceLang, targetLang))
-                    }
-                }
-        }
-    }
-
-    // Detecção de idioma offline via ML Kit
-    suspend fun detectLanguageOffline(text: String): String {
-        return suspendCancellableCoroutine { cont ->
-            langIdentifier.identifyLanguage(text)
-                .addOnSuccessListener { lang ->
-                    if (lang == "und") cont.resume("pt") // undetermined
-                    else cont.resume(lang)
-                }
-                .addOnFailureListener { cont.resume("pt") }
         }
     }
 
@@ -109,16 +67,14 @@ class TranslationManager(private val apiKey: String) {
         lastLang: String
     ): String {
         val words = text.lowercase().split(" ", ",", ".", "!", "?")
-        val leftScore  = langSignatures[leftLang]?.count { it in words }  ?: 0
+        val leftScore  = langSignatures[leftLang]?.count  { it in words } ?: 0
         val rightScore = langSignatures[rightLang]?.count { it in words } ?: 0
-        val totalWords = words.size.coerceAtLeast(1)
-        val confidence = Math.abs(leftScore - rightScore).toFloat() / totalWords
+        val confidence = Math.abs(leftScore - rightScore).toFloat() / words.size.coerceAtLeast(1)
 
         if (confidence >= 0.15f) {
             return if (leftScore > rightScore) leftLang else rightLang
         }
 
-        // Usa ML Kit offline para detectar
         val detected = detectLanguageOffline(text)
         return when {
             detected.startsWith(leftLang)  -> leftLang
@@ -129,7 +85,37 @@ class TranslationManager(private val apiKey: String) {
         }
     }
 
-    // Tradução online como fallback
+    private suspend fun detectLanguageOffline(text: String): String {
+        return suspendCancellableCoroutine { cont ->
+            langIdentifier.identifyLanguage(text)
+                .addOnSuccessListener { lang -> cont.resume(if (lang == "und") "pt" else lang) }
+                .addOnFailureListener { cont.resume("pt") }
+        }
+    }
+
+    suspend fun translate(text: String, sourceLang: String, targetLang: String): String {
+        val key = "$sourceLang-$targetLang"
+        val translator = translators[key]
+        return if (translator != null) {
+            translateOffline(translator, text, sourceLang, targetLang)
+        } else {
+            translateOnline(text, sourceLang, targetLang)
+        }
+    }
+
+    private suspend fun translateOffline(
+        translator: com.google.mlkit.nl.translate.Translator,
+        text: String,
+        sourceLang: String,
+        targetLang: String
+    ): String {
+        return suspendCancellableCoroutine { cont ->
+            translator.translate(text)
+                .addOnSuccessListener { cont.resume(it) }
+                .addOnFailureListener { cont.resume(text) }
+        }
+    }
+
     suspend fun translateOnline(text: String, sourceLang: String, targetLang: String): String {
         return withContext(Dispatchers.IO) {
             try {
@@ -144,16 +130,6 @@ class TranslationManager(private val apiKey: String) {
                     .getJSONArray("translations").getJSONObject(0)
                     .getString("translatedText")
             } catch (e: Exception) { text }
-        }
-    }
-
-    // Tradução: tenta offline primeiro, fallback online
-    suspend fun translate(text: String, sourceLang: String, targetLang: String): String {
-        val key = "$sourceLang-$targetLang"
-        return if (translators.containsKey(key)) {
-            translateOffline(text, sourceLang, targetLang)
-        } else {
-            translateOnline(text, sourceLang, targetLang)
         }
     }
 
