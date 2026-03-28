@@ -82,7 +82,13 @@ class TranslationManager(private val apiKey: String) {
             return if (leftScore > rightScore) leftLang else rightLang
         }
 
-        val detected = detectLanguageOffline(text)
+        val detectedRaw = detectLanguageOffline(text)
+        // Nunca aceita terceiro idioma — força para o par configurado
+        val detected = when {
+            detectedRaw.startsWith(leftLang) -> leftLang
+            detectedRaw.startsWith(rightLang) -> rightLang
+            else -> leftLang
+        }
         return when {
             detected.startsWith(leftLang)  -> leftLang
             detected.startsWith(rightLang) -> rightLang
