@@ -22,20 +22,71 @@ class TranslationManager(private val apiKey: String) {
     private val langIdentifier = LanguageIdentification.getClient()
 
     private val langSignatures = mapOf(
-        "pt" to listOf("que", "não", "sim", "como", "para", "com", "uma", "você",
-                       "estou", "obrigado", "então", "mas", "porque", "aqui",
-                       "esse", "ela", "ele", "foi", "ser", "aí", "né", "tá", "pra"),
-        "en" to listOf("the", "and", "is", "are", "you", "what", "how", "hello",
-                       "thank", "good", "please", "yes", "can", "will", "this",
-                       "that", "have", "from", "but", "they", "with", "your"),
-        "es" to listOf("que", "los", "las", "una", "como", "pero", "más", "por",
-                       "con", "para", "hay", "muy", "este", "ella", "ellos"),
-        "fr" to listOf("les", "des", "une", "que", "pour", "dans", "avec", "sur",
-                       "pas", "mais", "est", "qui", "par", "tout", "plus"),
-        "de" to listOf("die", "der", "und", "den", "von", "mit", "das", "ist",
-                       "nicht", "auch", "sich", "sie", "ein", "eine", "als"),
-        "it" to listOf("che", "non", "una", "con", "per", "del", "sono", "come",
-                       "più", "anche", "questa", "suo", "loro", "hanno")
+        "pt" to listOf(
+            "que", "não", "sim", "como", "para", "com", "uma", "você",
+            "estou", "obrigado", "então", "mas", "porque", "aqui", "isso",
+            "esse", "ela", "ele", "foi", "ser", "aí", "né", "tá", "pra",
+            "muito", "bem", "também", "quando", "onde", "quem", "qual",
+            "ainda", "já", "só", "mais", "menos", "sempre", "nunca",
+            "preciso", "quero", "posso", "tenho", "vou", "fui", "era",
+            "estava", "ficou", "fazer", "falar", "ver", "saber", "poder"
+        ),
+        "en" to listOf(
+            "the", "and", "is", "are", "you", "what", "how", "hello",
+            "thank", "good", "please", "yes", "can", "will", "this",
+            "that", "have", "from", "but", "they", "with", "your",
+            "was", "were", "been", "has", "had", "would", "could",
+            "should", "does", "did", "not", "just", "very", "also",
+            "when", "where", "who", "which", "there", "here", "about",
+            "know", "think", "want", "need", "going", "come", "make"
+        ),
+        "es" to listOf(
+            "que", "los", "las", "una", "como", "pero", "más", "por",
+            "con", "para", "hay", "muy", "este", "ella", "ellos",
+            "también", "cuando", "donde", "quien", "cual", "todo",
+            "bien", "sí", "gracias", "hola", "hasta", "desde",
+            "porque", "aunque", "mientras", "siempre", "nunca", "ya",
+            "tengo", "quiero", "puedo", "voy", "hacer", "saber", "ver"
+        ),
+        "fr" to listOf(
+            "les", "des", "une", "que", "pour", "dans", "avec", "sur",
+            "pas", "mais", "est", "qui", "par", "tout", "plus",
+            "aussi", "comme", "quand", "comment", "pourquoi",
+            "bien", "oui", "non", "merci", "bonjour", "très", "peu",
+            "avoir", "être", "faire", "dire", "aller", "voir", "venir",
+            "cette", "leur", "leurs", "beaucoup", "encore", "toujours"
+        ),
+        "nl" to listOf(
+            "de", "het", "een", "van", "en", "in", "is", "dat",
+            "op", "te", "zijn", "met", "voor", "niet", "aan",
+            "ook", "maar", "als", "bij", "dan", "nog", "wel",
+            "dit", "die", "meer", "kan", "hebben", "worden", "gaan",
+            "hallo", "dank", "goed", "ja", "nee", "graag", "alles",
+            "hoe", "wat", "waar", "wie", "waarom", "wanneer"
+        ),
+        "he" to listOf(
+            "של", "את", "הוא", "היא", "אני", "אנחנו", "הם",
+            "כן", "לא", "תודה", "שלום", "מה", "איך", "למה",
+            "כי", "אבל", "גם", "רק", "כבר", "עוד", "יותר",
+            "זה", "זאת", "אלה", "כל", "יש", "אין", "היה",
+            "עם", "על", "אל", "בסדר", "טוב", "נכון"
+        ),
+        "it" to listOf(
+            "che", "non", "una", "con", "per", "del", "sono", "come",
+            "più", "anche", "questa", "suo", "loro", "hanno",
+            "quando", "dove", "chi", "quale", "tutto", "bene",
+            "sì", "grazie", "ciao", "molto", "poco", "sempre",
+            "mai", "già", "ancora", "fare", "dire", "andare", "vedere",
+            "volere", "potere", "dovere", "sapere", "venire", "stare"
+        ),
+        "de" to listOf(
+            "die", "der", "und", "den", "von", "mit", "das", "ist",
+            "nicht", "auch", "sich", "sie", "ein", "eine", "als",
+            "wenn", "aber", "oder", "weil", "dass", "schon", "noch",
+            "gut", "ja", "nein", "danke", "hallo", "sehr", "viel",
+            "haben", "sein", "werden", "können", "müssen", "gehen",
+            "kommen", "sehen", "wissen", "machen", "sagen", "geben"
+        )
     )
 
     suspend fun prepareOfflineModel(sourceLang: String, targetLang: String): Boolean {
@@ -64,10 +115,10 @@ class TranslationManager(private val apiKey: String) {
         context: ContextManager.ConversationContext = ContextManager.ConversationContext.GENERAL
     ): String {
         val words = text.lowercase().split(" ", ",", ".", "!", "?")
-        var leftScore  = (langSignatures[leftLang]?.count { it in words } ?: 0) * if (leftLang == "pt") 2 else 1
-        var rightScore = (langSignatures[rightLang]?.count { it in words } ?: 0) * if (rightLang == "pt") 2 else 1
+        var leftScore  = (langSignatures[leftLang]?.count  { it in words } ?: 0) * 2
+        var rightScore = (langSignatures[rightLang]?.count { it in words } ?: 0) * 2
 
-        // Boost por palavras do glossário do contexto
+        // Boost por glossário de contexto
         if (context != ContextManager.ConversationContext.GENERAL) {
             val glossary = ContextManager.glossaries[context]
             glossary?.keys?.forEach { term ->
@@ -78,17 +129,20 @@ class TranslationManager(private val apiKey: String) {
         val confidence = Math.abs(leftScore - rightScore).toFloat() /
             words.size.coerceAtLeast(1)
 
-        if (confidence >= 0.08f) {
+        if (confidence >= 0.15f) {
             return if (leftScore > rightScore) leftLang else rightLang
         }
 
+        // Detecta offline via ML Kit
         val detectedRaw = detectLanguageOffline(text)
+
         // Nunca aceita terceiro idioma — força para o par configurado
         val detected = when {
-            detectedRaw.startsWith(leftLang) -> leftLang
+            detectedRaw.startsWith(leftLang)  -> leftLang
             detectedRaw.startsWith(rightLang) -> rightLang
             else -> leftLang
         }
+
         return when {
             detected.startsWith(leftLang)  -> leftLang
             detected.startsWith(rightLang) -> rightLang
@@ -112,7 +166,6 @@ class TranslationManager(private val apiKey: String) {
         targetLang: String,
         context: ContextManager.ConversationContext = ContextManager.ConversationContext.GENERAL
     ): String {
-        // Aplica glossário antes de traduzir
         val enriched = ContextManager.enrichTextForTranslation(text, context, sourceLang, targetLang)
         val key = "$sourceLang-$targetLang"
         val translator = translators[key]
