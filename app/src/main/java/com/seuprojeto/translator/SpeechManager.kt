@@ -15,32 +15,31 @@ class SpeechManager(private val context: Context) {
 
     companion object {
         private const val TAG = "SpeechManager"
-        private const val MIN_CONFIDENCE = 0.4f
         private const val RESTART_DELAY_MS = 150L
-        private const val MIN_TEXT_LENGTH = 2
     }
 
     private var recognizer: SpeechRecognizer? = null
     private var isListening = false
     private val handler = Handler(Looper.getMainLooper())
-    private var lastPartial = ""
     private var consecutiveErrors = 0
 
-    var onSpeechDetected: ((text: String, language: String) -> Unit)? = null
-    var onPartialSpeech: ((text: String) -> Unit)? = null
-    var onListeningState: ((active: Boolean) -> Unit)? = null
+    // Alternância por silêncio
+    private var currentChannel = "LEFT"  // começa sempre no esquerdo
+    private var lastSpeechTime = 0L
+    private val SILENCE_THRESHOLD_MS = 2000L  // 2 segundos de silêncio = troca de falante
 
-    // Idiomas suportados — quanto mais, melhor a detecção
+    var onSpeechDetected: ((text: String, channel: String) -> Unit)? = null
+    var onPartialSpeech: ((text: String, channel: String) -> Unit)? = null
+    var onListeningState: ((active: Boolean) -> Unit)? = null
+    var onChannelChanged: ((channel: String) -> Unit)? = null
+
     private val supportedLanguages = arrayOf(
         "pt-BR", "en-US", "es-ES", "fr-FR", "de-DE",
-        "it-IT", "ja-JP", "zh-CN", "ko-KR", "ru-RU",
-        "nl-NL", "ar-SA", "hi-IN", "pl-PL", "sv-SE",
-        "tr-TR", "vi-VN", "id-ID", "th-TH", "he-IL"
+        "it-IT", "nl-NL", "he-IL", "ja-JP", "zh-CN",
+        "ko-KR", "ru-RU", "ar-SA", "hi-IN", "pl-PL"
     )
 
-    fun init() {
-        createRecognizer()
-    }
+    fun init() { createRecognizer() }
 
     private fun createRecognizer() {
         recognizer?.destroy()
@@ -50,97 +49,56 @@ class SpeechManager(private val context: Context) {
             override fun onReadyForSpeech(params: Bundle?) {
                 consecutiveErrors = 0
                 onListeningState?.invoke(true)
-                Log.d(TAG, "Pronto para ouvir")
             }
 
             override fun onBeginningOfSpeech() {
-                Log.d(TAG, "Fala iniciada")
+                val now = System.currentTimeMillis()
+                val silence = now - lastSpeechTime
+
+                // Se houve silêncio suficiente, troca o canal
+                if (lastSpeechTime > 0 && silence >= SILENCE_THRESHOLD_MS) {
+                    currentChannel = if (currentChannel == "LEFT") "RIGHT" else "LEFT"
+                    onChannelChanged?.invoke(currentChannel)
+                    Log.d(TAG, "Canal alternado para: $currentChannel (silêncio: ${silence}ms)")
+                }
             }
 
             override fun onEndOfSpeech() {
-                Log.d(TAG, "Fala encerrada")
+                lastSpeechTime = System.currentTimeMillis()
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
                 val partial = partialResults
                     ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull() ?: return
-                if (partial != lastPartial && partial.length >= MIN_TEXT_LENGTH) {
-                    lastPartial = partial
-                    onPartialSpeech?.invoke(partial)
+                if (partial.length >= 2) {
+                    onPartialSpeech?.invoke(partial, currentChannel)
                 }
             }
 
             override fun onResults(results: Bundle?) {
-                lastPartial = ""
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val confidences = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
-
-                if (matches.isNullOrEmpty()) {
-                    restartIfNeeded()
-                    return
+                val text = matches?.firstOrNull() ?: run {
+                    restartIfNeeded(); return
                 }
+                if (text.length < 2) { restartIfNeeded(); return }
 
-                // Pega o resultado com maior confiança
-                var bestText = ""
-                var bestConf = 0f
-                matches.forEachIndexed { i, text ->
-                    val conf = confidences?.getOrNull(i) ?: 0.5f
-                    if (conf > bestConf && text.length >= MIN_TEXT_LENGTH) {
-                        bestConf = conf
-                        bestText = text
-                    }
-                }
-
-                // Ignora se confiança muito baixa
-                if (bestConf < MIN_CONFIDENCE && bestText.isEmpty()) {
-                    Log.d(TAG, "Confiança baixa ($bestConf), ignorando")
-                    restartIfNeeded()
-                    return
-                }
-
-                if (bestText.isEmpty()) bestText = matches.first()
-
-                val lang = results?.getString("android.speech.extra.LANGUAGE") ?: ""
-                Log.d(TAG, "Resultado: '$bestText' conf=$bestConf lang=$lang")
-                onSpeechDetected?.invoke(bestText, lang)
-
+                Log.d(TAG, "[$currentChannel] $text")
+                onSpeechDetected?.invoke(text, currentChannel)
                 restartIfNeeded()
             }
 
             override fun onError(error: Int) {
-                val msg = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "erro de áudio"
-                    SpeechRecognizer.ERROR_CLIENT -> "erro do cliente"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "sem permissão"
-                    SpeechRecognizer.ERROR_NETWORK -> "sem rede"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "timeout de rede"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "sem correspondência"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "reconhecedor ocupado"
-                    SpeechRecognizer.ERROR_SERVER -> "erro do servidor"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "timeout de fala"
-                    else -> "erro $error"
-                }
-                Log.e(TAG, "Erro: $msg")
+                Log.e(TAG, "Erro: $error")
                 consecutiveErrors++
-
-                // Recria o reconhecedor após muitos erros seguidos
                 if (consecutiveErrors >= 3) {
-                    Log.w(TAG, "Muitos erros, recriando reconhecedor...")
                     consecutiveErrors = 0
                     handler.postDelayed({
-                        if (isListening) {
-                            createRecognizer()
-                            startListening()
-                        }
+                        if (isListening) { createRecognizer(); doListen() }
                     }, 500)
                     return
                 }
-
-                // Erros normais — só reinicia
-                if (error != SpeechRecognizer.ERROR_CLIENT) {
-                    restartIfNeeded()
-                }
+                if (error != SpeechRecognizer.ERROR_CLIENT) restartIfNeeded()
             }
 
             override fun onRmsChanged(rmsdB: Float) {}
@@ -151,14 +109,13 @@ class SpeechManager(private val context: Context) {
 
     fun startListening() {
         isListening = true
-        lastPartial = ""
+        currentChannel = "LEFT"
+        lastSpeechTime = 0L
         doListen()
     }
 
     private fun doListen() {
         if (!isListening) return
-
-        // Detecta microfone do fone se conectado
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val useHeadset = audioManager.isWiredHeadsetOn || audioManager.isBluetoothScoOn
 
@@ -169,34 +126,23 @@ class SpeechManager(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
             putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", supportedLanguages)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 300L)
-
-            // Usa microfone do fone se disponível
-            if (useHeadset) {
-                putExtra("android.speech.extra.AUDIO_SOURCE", 4) // VOICE_COMMUNICATION
-                Log.d(TAG, "Usando microfone do fone")
-            } else {
-                Log.d(TAG, "Usando microfone do celular")
-            }
+            if (useHeadset) putExtra("android.speech.extra.AUDIO_SOURCE", 4)
         }
 
         try {
             recognizer?.startListening(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Erro ao iniciar: ${e.message}")
             handler.postDelayed({ if (isListening) doListen() }, 500)
         }
     }
 
     private fun restartIfNeeded() {
-        if (isListening) {
-            handler.postDelayed({ doListen() }, RESTART_DELAY_MS)
-        } else {
-            onListeningState?.invoke(false)
-        }
+        if (isListening) handler.postDelayed({ doListen() }, RESTART_DELAY_MS)
+        else onListeningState?.invoke(false)
     }
 
     fun stopListening() {
@@ -204,6 +150,11 @@ class SpeechManager(private val context: Context) {
         handler.removeCallbacksAndMessages(null)
         recognizer?.stopListening()
         onListeningState?.invoke(false)
+    }
+
+    fun resetChannel() {
+        currentChannel = "LEFT"
+        lastSpeechTime = 0L
     }
 
     fun release() {
