@@ -28,8 +28,6 @@ class MainActivity : AppCompatActivity() {
     private var leftLangName = "Português"
     private var rightLangName = "Inglês"
     private var lastDetectedLang = ""
-
-    // Histórico para melhorar detecção
     private val recentLangs = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,25 +59,37 @@ class MainActivity : AppCompatActivity() {
             val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
             val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
             modelsReady = ok1 && ok2
-            setStatus(if (modelsReady) "✅ Pronto — modo offline" else "✅ Pronto — modo online")
+            setStatus(if (modelsReady) "✅ Pronto — offline" else "✅ Pronto — online")
         }
 
+        // Texto parcial em tempo real
+        speechManager.onPartialSpeech = { partial ->
+            lifecycleScope.launch {
+                val guessedLang = translationManager.detectLanguageSmart(
+                    partial, leftLangCode, rightLangCode,
+                    recentLangs.lastOrNull() ?: lastDetectedLang
+                )
+                runOnUiThread {
+                    if (guessedLang == leftLangCode) {
+                        findViewById<TextView>(R.id.tv_left).text = "💬 $partial"
+                    } else {
+                        findViewById<TextView>(R.id.tv_right).text = "💬 $partial"
+                    }
+                }
+            }
+        }
+
+        // Resultado final
         speechManager.onSpeechDetected = { text, _ ->
             lifecycleScope.launch {
-                setStatus("🔄 Detectando...")
-
-                // Detecção com histórico de contexto
+                setStatus("🔄 Traduzindo...")
                 val detectedLang = translationManager.detectLanguageSmart(
                     text, leftLangCode, rightLangCode,
                     recentLangs.lastOrNull() ?: lastDetectedLang
                 )
-
-                // Atualiza histórico (máx 5)
                 recentLangs.add(detectedLang)
                 if (recentLangs.size > 5) recentLangs.removeAt(0)
                 lastDetectedLang = detectedLang
-
-                setStatus("🔄 Traduzindo...")
 
                 if (detectedLang == leftLangCode) {
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = text }
@@ -93,8 +103,16 @@ class MainActivity : AppCompatActivity() {
                     if (isAudioReady) audioManager.speakLeft(translated)
                 }
 
-                val mode = if (modelsReady) "offline" else "online"
-                setStatus("● Ouvindo ($mode)")
+                setStatus(if (modelsReady) "● Ouvindo (offline)" else "● Ouvindo")
+            }
+        }
+
+        // Estado do microfone
+        speechManager.onListeningState = { active ->
+            runOnUiThread {
+                if (isListening) {
+                    setStatus(if (active) "🎙 Ouvindo..." else "⏳ Aguardando...")
+                }
             }
         }
 
@@ -104,7 +122,7 @@ class MainActivity : AppCompatActivity() {
                 speechManager.startListening()
                 isListening = true
                 findViewById<Button>(R.id.btn_listen).text = "⏹ Parar"
-                setStatus("● Ouvindo...")
+                setStatus("🎙 Ouvindo...")
             } else {
                 speechManager.stopListening()
                 isListening = false
@@ -118,49 +136,41 @@ class MainActivity : AppCompatActivity() {
         // Botão trocar idiomas
         findViewById<ImageButton>(R.id.btn_swap).setOnClickListener {
             val wasListening = isListening
-            if (wasListening) {
-                speechManager.stopListening()
-                isListening = false
-            }
+            if (wasListening) { speechManager.stopListening(); isListening = false }
 
-            // Troca os idiomas
-            val tmpCode = leftLangCode
-            val tmpName = leftLangName
-            leftLangCode  = rightLangCode
-            leftLangName  = rightLangName
-            rightLangCode = tmpCode
-            rightLangName = tmpName
+            val tmpCode = leftLangCode; val tmpName = leftLangName
+            leftLangCode = rightLangCode; leftLangName = rightLangName
+            rightLangCode = tmpCode; rightLangName = tmpName
 
-            recentLangs.clear()
-            lastDetectedLang = ""
-
+            recentLangs.clear(); lastDetectedLang = ""
             updateLabels()
+
             audioManager.init(
                 leftLang = leftLangCode,
                 rightLang = rightLangCode,
                 onReady = { runOnUiThread { isAudioReady = true } }
             )
 
-            // Baixa modelos para o novo par
             lifecycleScope.launch {
                 setStatus("⬇️ Preparando novo par...")
                 val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
                 val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
                 modelsReady = ok1 && ok2
                 setStatus("🔄 Idiomas trocados!")
-
                 if (wasListening) {
                     speechManager.startListening()
                     isListening = true
-                    setStatus("● Ouvindo...")
+                    setStatus("🎙 Ouvindo...")
                 }
             }
         }
     }
 
     private fun updateLabels() {
-        findViewById<TextView>(R.id.tv_left_label).text  = "🎧 $leftLangName"
-        findViewById<TextView>(R.id.tv_right_label).text = "🎧 $rightLangName"
+        runOnUiThread {
+            findViewById<TextView>(R.id.tv_left_label).text  = "🎧 $leftLangName"
+            findViewById<TextView>(R.id.tv_right_label).text = "🎧 $rightLangName"
+        }
     }
 
     private fun setStatus(msg: String) {
