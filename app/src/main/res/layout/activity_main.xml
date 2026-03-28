@@ -6,13 +6,14 @@
     android:layout_height="match_parent"
     android:background="#0A0A0F">
 
+    <!-- Header -->
     <LinearLayout
         android:id="@+id/header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingTop="40dp"
-        android:paddingBottom="12dp"
+        android:paddingTop="36dp"
+        android:paddingBottom="8dp"
         android:gravity="center"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -22,7 +23,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🎧"
-            android:textSize="28sp"/>
+            android:textSize="26sp"/>
 
         <TextView
             android:layout_width="wrap_content"
@@ -31,16 +32,17 @@
             android:textColor="#FFFFFF"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:layout_marginTop="6dp"/>
+            android:layout_marginTop="4dp"/>
     </LinearLayout>
 
+    <!-- Card Esquerdo -->
     <androidx.cardview.widget.CardView
         android:id="@+id/card_left"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="8dp"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="10dp"
         android:layout_marginBottom="6dp"
         app:cardBackgroundColor="#12122A"
         app:cardCornerRadius="16dp"
@@ -57,15 +59,31 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
-                android:id="@+id/tv_left_label"
-                android:layout_width="wrap_content"
+            <!-- Label + indicador de fala -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🎧 Português"
-                android:textColor="#6C6CFF"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp"/>
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:id="@+id/tv_left_label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🎧 Português"
+                    android:textColor="#6C6CFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"/>
+
+                <View
+                    android:id="@+id/indicator_left"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/ic_speaking_left"
+                    android:visibility="invisible"/>
+            </LinearLayout>
 
             <ScrollView
                 android:layout_width="match_parent"
@@ -83,6 +101,7 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- Botão Swap -->
     <ImageButton
         android:id="@+id/btn_swap"
         android:layout_width="44dp"
@@ -95,6 +114,7 @@
         app:layout_constraintTop_toTopOf="@id/card_left"
         app:layout_constraintBottom_toBottomOf="@id/card_right"/>
 
+    <!-- Card Direito -->
     <androidx.cardview.widget.CardView
         android:id="@+id/card_right"
         android:layout_width="0dp"
@@ -116,15 +136,30 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
-                android:id="@+id/tv_right_label"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🎧 Inglês"
-                android:textColor="#4CAF50"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp"/>
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:id="@+id/tv_right_label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🎧 Inglês"
+                    android:textColor="#4CAF50"
+                    android:textSize="12sp"
+                    android:textStyle="bold"/>
+
+                <View
+                    android:id="@+id/indicator_right"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/ic_speaking_right"
+                    android:visibility="invisible"/>
+            </LinearLayout>
 
             <ScrollView
                 android:layout_width="match_parent"
@@ -142,18 +177,37 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <TextView
-        android:id="@+id/tv_status"
+    <!-- Status com ícone de microfone -->
+    <LinearLayout
+        android:id="@+id/status_bar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="● Pausado"
-        android:textColor="#666666"
-        android:textSize="13sp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:layout_marginBottom="10dp"
         app:layout_constraintBottom_toTopOf="@id/btn_listen"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent">
 
+        <TextView
+            android:id="@+id/tv_mic_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="●"
+            android:textColor="#666666"
+            android:textSize="10sp"
+            android:layout_marginEnd="6dp"/>
+
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pausado"
+            android:textColor="#666666"
+            android:textSize="13sp"/>
+    </LinearLayout>
+
+    <!-- Botão principal -->
     <Button
         android:id="@+id/btn_listen"
         android:layout_width="0dp"
