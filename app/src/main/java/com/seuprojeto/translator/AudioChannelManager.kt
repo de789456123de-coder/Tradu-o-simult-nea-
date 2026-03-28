@@ -1,166 +1,180 @@
 package com.seuprojeto.translator
 
 import android.content.Context
-import android.media.MediaPlayer
-import android.util.Base64
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import kotlinx.coroutines.*
-import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.FileInputStream
+import java.util.Locale
 
 class AudioChannelManager(private val context: Context) {
 
     companion object {
         private const val TAG = "AudioChannelManager"
+        private const val SAMPLE_RATE = 22050
     }
 
+    private var ttsLeft: TextToSpeech? = null
+    private var ttsRight: TextToSpeech? = null
+    private var isTtsLeftReady = false
+    private var isTtsRightReady = false
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var apiKey: String = ""
-    private var leftLangCode = "pt"
-    private var rightLangCode = "en"
-
-    private val voiceMap = mapOf(
-        "pt" to ("pt-BR" to "pt-BR-Wavenet-A"),
-        "en" to ("en-US" to "en-US-Wavenet-D"),
-        "es" to ("es-ES" to "es-ES-Wavenet-B"),
-        "fr" to ("fr-FR" to "fr-FR-Wavenet-C"),
-        "de" to ("de-DE" to "de-DE-Wavenet-B"),
-        "it" to ("it-IT" to "it-IT-Wavenet-A"),
-        "ja" to ("ja-JP" to "ja-JP-Wavenet-B"),
-        "zh" to ("cmn-CN" to "cmn-CN-Wavenet-A"),
-        "ko" to ("ko-KR" to "ko-KR-Wavenet-A"),
-        "ru" to ("ru-RU" to "ru-RU-Wavenet-A"),
-        "nl" to ("nl-NL" to "nl-NL-Wavenet-A"),
-        "he" to ("he-IL" to "he-IL-Wavenet-A"),
-        "ar" to ("ar-XA" to "ar-XA-Wavenet-A"),
-        "hi" to ("hi-IN" to "hi-IN-Wavenet-A"),
-        "pl" to ("pl-PL" to "pl-PL-Wavenet-A"),
-        "sv" to ("sv-SE" to "sv-SE-Wavenet-A"),
-        "tr" to ("tr-TR" to "tr-TR-Wavenet-A"),
-        "vi" to ("vi-VN" to "vi-VN-Wavenet-A"),
-        "id" to ("id-ID" to "id-ID-Wavenet-A"),
-        "th" to ("th-TH" to "th-TH-Neural2-C")
-    )
 
     fun init(
-        apiKey: String,
+        apiKey: String = "",
         leftLang: String = "pt",
         rightLang: String = "en",
         onReady: () -> Unit
     ) {
-        this.apiKey = apiKey
-        this.leftLangCode = leftLang
-        this.rightLangCode = rightLang
-        onReady()
+        val localeLeft = langToLocale(leftLang)
+        val localeRight = langToLocale(rightLang)
+
+        ttsLeft = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                ttsLeft?.language = localeLeft
+                ttsLeft?.setSpeechRate(0.88f)
+                ttsLeft?.setPitch(0.88f)
+                isTtsLeftReady = true
+                if (isTtsRightReady) onReady()
+            }
+        }
+        ttsRight = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                ttsRight?.language = localeRight
+                ttsRight?.setSpeechRate(0.88f)
+                ttsRight?.setPitch(0.88f)
+                isTtsRightReady = true
+                if (isTtsLeftReady) onReady()
+            }
+        }
+    }
+
+    private fun langToLocale(lang: String): Locale {
+        return when (lang) {
+            "pt"    -> Locale("pt", "BR")
+            "en"    -> Locale.ENGLISH
+            "es"    -> Locale("es", "ES")
+            "fr"    -> Locale.FRENCH
+            "de"    -> Locale.GERMAN
+            "it"    -> Locale.ITALIAN
+            "ja"    -> Locale.JAPANESE
+            "zh"    -> Locale.CHINESE
+            "ko"    -> Locale.KOREAN
+            "ru"    -> Locale("ru")
+            "nl"    -> Locale("nl")
+            "he"    -> Locale("he")
+            "ar"    -> Locale("ar")
+            "hi"    -> Locale("hi")
+            "pl"    -> Locale("pl")
+            "sv"    -> Locale("sv")
+            "tr"    -> Locale("tr")
+            "vi"    -> Locale("vi")
+            "id"    -> Locale("id")
+            "th"    -> Locale("th")
+            else    -> Locale(lang)
+        }
     }
 
     enum class Channel { LEFT, RIGHT }
 
     fun speakLeft(text: String) {
+        if (!isTtsLeftReady) return
         scope.launch {
-            Log.d(TAG, "speakLeft: $text | lang: $leftLangCode")
-            val (langCode, voiceName) = voiceMap[leftLangCode] ?: ("pt-BR" to "pt-BR-Wavenet-A")
-            val mp3 = fetchTTS(text, langCode, voiceName)
-            if (mp3 == null) {
-                Log.e(TAG, "speakLeft: MP3 nulo, TTS falhou")
-                return@launch
-            }
-            Log.d(TAG, "speakLeft: MP3 recebido ${mp3.size} bytes")
-            playMp3(mp3, Channel.LEFT)
+            val f = synthesizeToFile(ttsLeft, text, "left_${System.currentTimeMillis()}")
+            f?.let { playOnChannel(it, Channel.LEFT) }
         }
     }
 
     fun speakRight(text: String) {
+        if (!isTtsRightReady) return
         scope.launch {
-            Log.d(TAG, "speakRight: $text | lang: $rightLangCode")
-            val (langCode, voiceName) = voiceMap[rightLangCode] ?: ("en-US" to "en-US-Wavenet-D")
-            val mp3 = fetchTTS(text, langCode, voiceName)
-            if (mp3 == null) {
-                Log.e(TAG, "speakRight: MP3 nulo, TTS falhou")
-                return@launch
-            }
-            Log.d(TAG, "speakRight: MP3 recebido ${mp3.size} bytes")
-            playMp3(mp3, Channel.RIGHT)
+            val f = synthesizeToFile(ttsRight, text, "right_${System.currentTimeMillis()}")
+            f?.let { playOnChannel(it, Channel.RIGHT) }
         }
     }
 
-    private fun fetchTTS(text: String, languageCode: String, voiceName: String): ByteArray? {
-        return try {
-            Log.d(TAG, "fetchTTS: lang=$languageCode voice=$voiceName")
-            val url = URL("https://texttospeech.googleapis.com/v1/text:synthesize?key=$apiKey")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
-
-            val body = JSONObject().apply {
-                put("input", JSONObject().put("text", text))
-                put("voice", JSONObject().apply {
-                    put("languageCode", languageCode)
-                    put("name", voiceName)
-                })
-                put("audioConfig", JSONObject().apply {
-                    put("audioEncoding", "MP3")
-                    put("speakingRate", 0.9)
-                    put("pitch", -1.0)
-                })
-            }
-
-            conn.outputStream.write(body.toString().toByteArray())
-
-            val responseCode = conn.responseCode
-            Log.d(TAG, "fetchTTS: responseCode=$responseCode")
-
-            if (responseCode != 200) {
-                val error = conn.errorStream?.bufferedReader()?.readText()
-                Log.e(TAG, "fetchTTS erro: $error")
-                return null
-            }
-
-            val response = conn.inputStream.bufferedReader().readText()
-            val audioContent = JSONObject(response).getString("audioContent")
-            Base64.decode(audioContent, Base64.DEFAULT)
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchTTS exception: ${e.message}")
-            null
-        }
-    }
-
-    private fun playMp3(mp3Data: ByteArray, channel: Channel) {
+    private fun playOnChannel(wavFile: File, channel: Channel) {
         try {
-            val tempFile = File(context.cacheDir, "tts_${channel}_${System.currentTimeMillis()}.mp3")
-            FileOutputStream(tempFile).use { it.write(mp3Data) }
-            Log.d(TAG, "playMp3: arquivo salvo ${tempFile.absolutePath}")
+            val pcmData = extractPcmFromWav(wavFile)
+            if (pcmData.isEmpty()) return
 
-            val player = MediaPlayer()
-            player.setDataSource(tempFile.absolutePath)
-            player.prepare()
-
-            // setVolume APÓS prepare()
-            when (channel) {
-                Channel.LEFT  -> player.setVolume(1.0f, 0.0f)
-                Channel.RIGHT -> player.setVolume(0.0f, 1.0f)
+            val stereoData = ShortArray(pcmData.size * 2)
+            for (i in pcmData.indices) {
+                when (channel) {
+                    Channel.LEFT  -> { stereoData[i * 2] = pcmData[i]; stereoData[i * 2 + 1] = 0 }
+                    Channel.RIGHT -> { stereoData[i * 2] = 0; stereoData[i * 2 + 1] = pcmData[i] }
+                }
             }
 
-            player.start()
-            Log.d(TAG, "playMp3: tocando canal $channel")
+            val bufferSize = AudioTrack.getMinBufferSize(
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_OUT_STEREO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
 
-            player.setOnCompletionListener {
-                it.release()
-                tempFile.delete()
-                Log.d(TAG, "playMp3: concluído e liberado")
+            val audioTrack = AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build())
+                .setAudioFormat(AudioFormat.Builder()
+                    .setSampleRate(SAMPLE_RATE)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .build())
+                .setBufferSizeInBytes(bufferSize)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+
+            audioTrack.play()
+            var offset = 0
+            while (offset < stereoData.size) {
+                val end = minOf(offset + bufferSize / 2, stereoData.size)
+                audioTrack.write(stereoData, offset, end - offset)
+                offset = end
             }
+            audioTrack.stop()
+            audioTrack.release()
+            wavFile.delete()
         } catch (e: Exception) {
-            Log.e(TAG, "playMp3 exception: ${e.message}")
+            Log.e(TAG, "Erro playback: ${e.message}")
         }
     }
 
-    fun setLanguageLeft(lang: String) { leftLangCode = lang }
-    fun setLanguageRight(lang: String) { rightLangCode = lang }
-    fun release() { scope.cancel() }
+    private suspend fun synthesizeToFile(
+        tts: TextToSpeech?,
+        text: String,
+        filename: String
+    ): File? = suspendCancellableCoroutine { cont ->
+        if (tts == null) { cont.resume(null) {}; return@suspendCancellableCoroutine }
+        val outputFile = File(context.cacheDir, "$filename.wav")
+        val uttId = "utt_$filename"
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {}
+            override fun onDone(id: String?) { if (id == uttId) cont.resume(outputFile) {} }
+            override fun onError(id: String?) { cont.resume(null) {} }
+        })
+        if (tts.synthesizeToFile(text, null, outputFile, uttId) != TextToSpeech.SUCCESS) {
+            cont.resume(null) {}
+        }
+    }
+
+    private fun extractPcmFromWav(wavFile: File): ShortArray {
+        return try {
+            val bytes = FileInputStream(wavFile).use { it.readBytes() }
+            val pcmBytes = bytes.drop(44).toByteArray()
+            ShortArray(pcmBytes.size / 2) { i ->
+                ((pcmBytes[i * 2 + 1].toInt() shl 8) or (pcmBytes[i * 2].toInt() and 0xFF)).toShort()
+            }
+        } catch (e: Exception) { ShortArray(0) }
+    }
+
+    fun setLanguageLeft(lang: String) { ttsLeft?.language = langToLocale(lang) }
+    fun setLanguageRight(lang: String) { ttsRight?.language = langToLocale(lang) }
+    fun release() { scope.cancel(); ttsLeft?.shutdown(); ttsRight?.shutdown() }
 }
