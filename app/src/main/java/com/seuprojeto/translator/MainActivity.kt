@@ -31,6 +31,10 @@ class MainActivity : AppCompatActivity() {
     private val recentLangs = mutableListOf<String>()
     private var currentContext = ContextManager.ConversationContext.GENERAL
 
+    // Conta quantas vezes seguidas detectou o mesmo idioma
+    // Se detectar o mesmo 3x seguidas sem traduzir, força alternância
+    private var sameLanguageCount = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -66,9 +70,9 @@ class MainActivity : AppCompatActivity() {
             val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
             val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
             modelsReady = ok1 && ok2
-            val contextLabel = if (currentContext != ContextManager.ConversationContext.GENERAL)
-                " · ${currentContext.emoji} ${currentContext.displayName}" else ""
-            setStatus(if (modelsReady) "✅ Offline$contextLabel" else "✅ Online$contextLabel")
+            val ctxLabel = if (currentContext != ContextManager.ConversationContext.GENERAL)
+                " · ${currentContext.emoji}" else ""
+            setStatus(if (modelsReady) "✅ Offline$ctxLabel" else "✅ Online$ctxLabel")
         }
 
         speechManager.onPartialSpeech = { partial ->
@@ -90,32 +94,42 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 setStatus("🔄 Traduzindo...")
 
-                // Auto-detecta contexto se não foi especificado
-                val activeContext = if (currentContext == ContextManager.ConversationContext.GENERAL) {
+                val activeContext = if (currentContext == ContextManager.ConversationContext.GENERAL)
                     ContextManager.detectContext(text) ?: currentContext
-                } else currentContext
+                else currentContext
 
-                val detectedLang = translationManager.detectLanguageSmart(
+                var detectedLang = translationManager.detectLanguageSmart(
                     text, leftLangCode, rightLangCode,
                     recentLangs.lastOrNull() ?: lastDetectedLang, activeContext
                 )
+
+                // Anti-bug: se detectou o mesmo idioma 2x seguidas, força o oposto
+                if (detectedLang == lastDetectedLang) {
+                    sameLanguageCount++
+                    if (sameLanguageCount >= 2) {
+                        detectedLang = if (detectedLang == leftLangCode) rightLangCode else leftLangCode
+                        sameLanguageCount = 0
+                    }
+                } else {
+                    sameLanguageCount = 0
+                }
+
                 recentLangs.add(detectedLang)
                 if (recentLangs.size > 5) recentLangs.removeAt(0)
                 lastDetectedLang = detectedLang
 
                 if (detectedLang == leftLangCode) {
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = text }
-                    val translated = translationManager.translate(
-                        text, leftLangCode, rightLangCode, activeContext)
+                    val translated = translationManager.translate(text, leftLangCode, rightLangCode, activeContext)
                     runOnUiThread { findViewById<TextView>(R.id.tv_right).text = translated }
                     if (isAudioReady) audioManager.speakRight(translated)
                 } else {
                     runOnUiThread { findViewById<TextView>(R.id.tv_right).text = text }
-                    val translated = translationManager.translate(
-                        text, rightLangCode, leftLangCode, activeContext)
+                    val translated = translationManager.translate(text, rightLangCode, leftLangCode, activeContext)
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = translated }
                     if (isAudioReady) audioManager.speakLeft(translated)
                 }
+
                 setStatus(if (modelsReady) "● Ouvindo (offline)" else "● Ouvindo")
             }
         }
@@ -130,6 +144,9 @@ class MainActivity : AppCompatActivity() {
             if (!isListening) {
                 speechManager.startListening()
                 isListening = true
+                sameLanguageCount = 0
+                lastDetectedLang = ""
+                recentLangs.clear()
                 findViewById<Button>(R.id.btn_listen).text = "⏹ Parar"
                 setStatus("🎙 Ouvindo...")
             } else {
@@ -137,6 +154,7 @@ class MainActivity : AppCompatActivity() {
                 isListening = false
                 recentLangs.clear()
                 lastDetectedLang = ""
+                sameLanguageCount = 0
                 findViewById<Button>(R.id.btn_listen).text = "▶ Iniciar Conversa"
                 setStatus("● Pausado")
             }
@@ -150,7 +168,7 @@ class MainActivity : AppCompatActivity() {
             leftLangCode = rightLangCode; leftLangName = rightLangName
             rightLangCode = tmpCode; rightLangName = tmpName
 
-            recentLangs.clear(); lastDetectedLang = ""
+            recentLangs.clear(); lastDetectedLang = ""; sameLanguageCount = 0
             updateLabels()
             audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
                 onReady = { runOnUiThread { isAudioReady = true } })
