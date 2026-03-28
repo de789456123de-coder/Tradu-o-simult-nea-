@@ -5,13 +5,11 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -33,12 +31,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        leftLangCode = intent.getStringExtra("LEFT_LANG_CODE") ?: "pt"
+        leftLangCode  = intent.getStringExtra("LEFT_LANG_CODE")  ?: "pt"
         rightLangCode = intent.getStringExtra("RIGHT_LANG_CODE") ?: "en"
-        leftLangName = intent.getStringExtra("LEFT_LANG_NAME") ?: "Português"
+        leftLangName  = intent.getStringExtra("LEFT_LANG_NAME")  ?: "Português"
         rightLangName = intent.getStringExtra("RIGHT_LANG_NAME") ?: "Inglês"
 
-        findViewById<TextView>(R.id.tv_left_label).text = "🎧 $leftLangName"
+        findViewById<TextView>(R.id.tv_left_label).text  = "🎧 $leftLangName"
         findViewById<TextView>(R.id.tv_right_label).text = "🎧 $rightLangName"
 
         requestMicPermission()
@@ -46,7 +44,6 @@ class MainActivity : AppCompatActivity() {
 
         audioManager = AudioChannelManager(this)
         audioManager.init(
-            apiKey = API_KEY,
             leftLang = leftLangCode,
             rightLang = rightLangCode,
             onReady = {
@@ -57,23 +54,19 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        // Teste imediato de TTS ao abrir o app
-        lifecycleScope.launch {
-            kotlinx.coroutines.delay(2000)
-            setStatus("🔊 Testando voz...")
-            audioManager.speakLeft("Teste de voz esquerda")
-        }
-
         speechManager = SpeechManager(this)
         speechManager.init()
 
         speechManager.onSpeechDetected = { text, _ ->
             lifecycleScope.launch {
-                setStatus("🔄 Traduzindo...")
-                val detectedLang = detectWithContext(text)
+                setStatus("🔄 Detectando...")
+                val detectedLang = translationManager.detectLanguageSmart(
+                    text, leftLangCode, rightLangCode, lastDetectedLang
+                )
                 lastDetectedLang = detectedLang
+                setStatus("🔄 Traduzindo...")
 
-                if (isClosestTo(detectedLang, leftLangCode)) {
+                if (detectedLang == leftLangCode) {
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = text }
                     val translated = translationManager.translate(text, leftLangCode, rightLangCode)
                     runOnUiThread { findViewById<TextView>(R.id.tv_right).text = translated }
@@ -101,20 +94,6 @@ class MainActivity : AppCompatActivity() {
                 setStatus("● Pausado")
             }
         }
-    }
-
-    private suspend fun detectWithContext(text: String): String {
-        val detected = translationManager.detectLanguage(text)
-        if (detected == leftLangCode || detected == rightLangCode) return detected
-        if (detected.startsWith(leftLangCode)) return leftLangCode
-        if (detected.startsWith(rightLangCode)) return rightLangCode
-        return if (lastDetectedLang == leftLangCode) rightLangCode else leftLangCode
-    }
-
-    private fun isClosestTo(detected: String, configured: String): Boolean {
-        return detected == configured ||
-               detected.startsWith(configured) ||
-               configured.startsWith(detected)
     }
 
     private fun setStatus(msg: String) {
