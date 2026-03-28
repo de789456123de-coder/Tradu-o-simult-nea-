@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -28,6 +29,9 @@ class MainActivity : AppCompatActivity() {
     private var rightLangName = "Inglês"
     private var lastDetectedLang = ""
 
+    // Histórico para melhorar detecção
+    private val recentLangs = mutableListOf<String>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -37,12 +41,10 @@ class MainActivity : AppCompatActivity() {
         leftLangName  = intent.getStringExtra("LEFT_LANG_NAME")  ?: "Português"
         rightLangName = intent.getStringExtra("RIGHT_LANG_NAME") ?: "Inglês"
 
-        findViewById<TextView>(R.id.tv_left_label).text  = "🎧 $leftLangName"
-        findViewById<TextView>(R.id.tv_right_label).text = "🎧 $rightLangName"
-
+        updateLabels()
         requestMicPermission()
-        translationManager = TranslationManager(API_KEY)
 
+        translationManager = TranslationManager(API_KEY)
         audioManager = AudioChannelManager(this)
         audioManager.init(
             leftLang = leftLangCode,
@@ -53,22 +55,30 @@ class MainActivity : AppCompatActivity() {
         speechManager = SpeechManager(this)
         speechManager.init()
 
-        // Baixa modelos offline em background
+        // Baixa modelos offline
         lifecycleScope.launch {
-            setStatus("⬇️ Baixando modelos offline...")
+            setStatus("⬇️ Preparando modo offline...")
             val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
             val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
             modelsReady = ok1 && ok2
-            setStatus(if (modelsReady) "✅ Pronto (offline)" else "✅ Pronto (online)")
+            setStatus(if (modelsReady) "✅ Pronto — modo offline" else "✅ Pronto — modo online")
         }
 
         speechManager.onSpeechDetected = { text, _ ->
             lifecycleScope.launch {
                 setStatus("🔄 Detectando...")
+
+                // Detecção com histórico de contexto
                 val detectedLang = translationManager.detectLanguageSmart(
-                    text, leftLangCode, rightLangCode, lastDetectedLang
+                    text, leftLangCode, rightLangCode,
+                    recentLangs.lastOrNull() ?: lastDetectedLang
                 )
+
+                // Atualiza histórico (máx 5)
+                recentLangs.add(detectedLang)
+                if (recentLangs.size > 5) recentLangs.removeAt(0)
                 lastDetectedLang = detectedLang
+
                 setStatus("🔄 Traduzindo...")
 
                 if (detectedLang == leftLangCode) {
@@ -82,22 +92,75 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = translated }
                     if (isAudioReady) audioManager.speakLeft(translated)
                 }
-                setStatus(if (modelsReady) "● Ouvindo (offline)" else "● Ouvindo...")
+
+                val mode = if (modelsReady) "offline" else "online"
+                setStatus("● Ouvindo ($mode)")
             }
         }
 
+        // Botão iniciar/parar
         findViewById<Button>(R.id.btn_listen).setOnClickListener {
             if (!isListening) {
                 speechManager.startListening()
                 isListening = true
-                findViewById<Button>(R.id.btn_listen).text = "Parar"
+                findViewById<Button>(R.id.btn_listen).text = "⏹ Parar"
+                setStatus("● Ouvindo...")
             } else {
                 speechManager.stopListening()
                 isListening = false
-                findViewById<Button>(R.id.btn_listen).text = "Iniciar Conversa"
+                recentLangs.clear()
+                lastDetectedLang = ""
+                findViewById<Button>(R.id.btn_listen).text = "▶ Iniciar Conversa"
                 setStatus("● Pausado")
             }
         }
+
+        // Botão trocar idiomas
+        findViewById<ImageButton>(R.id.btn_swap).setOnClickListener {
+            val wasListening = isListening
+            if (wasListening) {
+                speechManager.stopListening()
+                isListening = false
+            }
+
+            // Troca os idiomas
+            val tmpCode = leftLangCode
+            val tmpName = leftLangName
+            leftLangCode  = rightLangCode
+            leftLangName  = rightLangName
+            rightLangCode = tmpCode
+            rightLangName = tmpName
+
+            recentLangs.clear()
+            lastDetectedLang = ""
+
+            updateLabels()
+            audioManager.init(
+                leftLang = leftLangCode,
+                rightLang = rightLangCode,
+                onReady = { runOnUiThread { isAudioReady = true } }
+            )
+
+            // Baixa modelos para o novo par
+            lifecycleScope.launch {
+                setStatus("⬇️ Preparando novo par...")
+                val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
+                val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
+                modelsReady = ok1 && ok2
+                setStatus("🔄 Idiomas trocados!")
+
+                if (wasListening) {
+                    speechManager.startListening()
+                    isListening = true
+                    setStatus("● Ouvindo...")
+                }
+            }
+        }
+    }
+
+    private fun updateLabels() {
+        findViewById<TextView>(R.id.tv_left_label).text  = "🎧 $leftLangName"
+        findViewById<TextView>(R.id.tv_right_label).text = "🎧 $rightLangName"
     }
 
     private fun setStatus(msg: String) {
