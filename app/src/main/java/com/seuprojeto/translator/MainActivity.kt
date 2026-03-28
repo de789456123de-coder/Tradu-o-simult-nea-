@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             setStatus("⬇️ Preparando Whisper...")
+            whisperManager.onDownloadProgress = { msg -> setStatus(msg) }
             whisperReady = whisperManager.init()
 
             setStatus("⬇️ Preparando tradução offline...")
