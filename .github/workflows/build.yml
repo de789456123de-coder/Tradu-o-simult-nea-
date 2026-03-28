@@ -19,27 +19,29 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Download Whisper binaries
+      - name: Install NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
+          echo "NDK_PATH=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Build Whisper for ARM64
         run: |
           mkdir -p app/src/main/assets/whisper
-          cd app/src/main/assets/whisper
 
-          # Download whisper-cli pre-compiled for ARM64
-          curl -L -o ggml-tiny.bin \
+          # Download model
+          curl -L -o app/src/main/assets/whisper/ggml-tiny.bin \
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
 
-          # Build whisper.cpp for Android ARM64
-          sudo apt-get install -y cmake clang
-          cd /tmp
-          git clone https://github.com/ggerganov/whisper.cpp --depth 1
-          cd whisper.cpp
+          # Clone and build
+          git clone https://github.com/ggerganov/whisper.cpp --depth 1 /tmp/whisper
+          cd /tmp/whisper
           mkdir build && cd build
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
             -DWHISPER_BUILD_TESTS=OFF \
             -DWHISPER_BUILD_EXAMPLES=ON \
             -DBUILD_SHARED_LIBS=ON \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk)/build/cmake/android.toolchain.cmake \
+            -DCMAKE_TOOLCHAIN_FILE=$NDK_PATH/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-26
           make -j4
