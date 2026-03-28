@@ -64,8 +64,8 @@ class TranslationManager(private val apiKey: String) {
         context: ContextManager.ConversationContext = ContextManager.ConversationContext.GENERAL
     ): String {
         val words = text.lowercase().split(" ", ",", ".", "!", "?")
-        var leftScore  = langSignatures[leftLang]?.count  { it in words } ?: 0
-        var rightScore = langSignatures[rightLang]?.count { it in words } ?: 0
+        var leftScore  = (langSignatures[leftLang]?.count { it in words } ?: 0) * if (leftLang == "pt") 2 else 1
+        var rightScore = (langSignatures[rightLang]?.count { it in words } ?: 0) * if (rightLang == "pt") 2 else 1
 
         // Boost por palavras do glossário do contexto
         if (context != ContextManager.ConversationContext.GENERAL) {
@@ -78,7 +78,7 @@ class TranslationManager(private val apiKey: String) {
         val confidence = Math.abs(leftScore - rightScore).toFloat() /
             words.size.coerceAtLeast(1)
 
-        if (confidence >= 0.12f) {
+        if (confidence >= 0.08f) {
             return if (leftScore > rightScore) leftLang else rightLang
         }
 
