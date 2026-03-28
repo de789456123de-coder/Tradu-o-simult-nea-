@@ -18,6 +18,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var translationManager: TranslationManager
     private var isAudioReady = false
     private var isListening = false
+    private var modelsReady = false
 
     private val API_KEY = "AIzaSyAmTZS9c0xiaJZMe62s_AgsONhOsyboMFI"
 
@@ -46,16 +47,20 @@ class MainActivity : AppCompatActivity() {
         audioManager.init(
             leftLang = leftLangCode,
             rightLang = rightLangCode,
-            onReady = {
-                runOnUiThread {
-                    isAudioReady = true
-                    setStatus("✅ Pronto!")
-                }
-            }
+            onReady = { runOnUiThread { isAudioReady = true } }
         )
 
         speechManager = SpeechManager(this)
         speechManager.init()
+
+        // Baixa modelos offline em background
+        lifecycleScope.launch {
+            setStatus("⬇️ Baixando modelos offline...")
+            val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
+            val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
+            modelsReady = ok1 && ok2
+            setStatus(if (modelsReady) "✅ Pronto (offline)" else "✅ Pronto (online)")
+        }
 
         speechManager.onSpeechDetected = { text, _ ->
             lifecycleScope.launch {
@@ -77,7 +82,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { findViewById<TextView>(R.id.tv_left).text = translated }
                     if (isAudioReady) audioManager.speakLeft(translated)
                 }
-                setStatus("● Ouvindo...")
+                setStatus(if (modelsReady) "● Ouvindo (offline)" else "● Ouvindo...")
             }
         }
 
@@ -86,7 +91,6 @@ class MainActivity : AppCompatActivity() {
                 speechManager.startListening()
                 isListening = true
                 findViewById<Button>(R.id.btn_listen).text = "Parar"
-                setStatus("● Ouvindo...")
             } else {
                 speechManager.stopListening()
                 isListening = false
@@ -111,5 +115,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         audioManager.release()
         speechManager.release()
+        translationManager.release()
     }
 }
