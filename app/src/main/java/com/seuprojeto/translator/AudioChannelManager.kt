@@ -37,7 +37,7 @@ class AudioChannelManager(private val context: Context) {
         ttsLeft = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsLeft?.language = localeLeft
-                ttsLeft?.setSpeechRate(1.08f)
+                ttsLeft?.setSpeechRate(0.95f)
                 ttsLeft?.setPitch(0.88f)
                 isTtsLeftReady = true
                 if (isTtsRightReady) onReady()
@@ -46,7 +46,7 @@ class AudioChannelManager(private val context: Context) {
         ttsRight = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsRight?.language = localeRight
-                ttsRight?.setSpeechRate(1.08f)
+                ttsRight?.setSpeechRate(0.95f)
                 ttsRight?.setPitch(0.88f)
                 isTtsRightReady = true
                 if (isTtsLeftReady) onReady()
