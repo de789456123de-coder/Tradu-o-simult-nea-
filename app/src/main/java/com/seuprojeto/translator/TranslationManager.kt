@@ -7,7 +7,6 @@ import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
 import com.google.mlkit.common.model.DownloadConditions
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.tasks.await
 import kotlin.coroutines.resume
 
 class TranslationManager(private val apiKey: String) {
@@ -15,7 +14,6 @@ class TranslationManager(private val apiKey: String) {
     private val translators = mutableMapOf<String, Translator>()
     private val conditions = DownloadConditions.Builder().build()
 
-    // Converte o nosso código (pt) para o formato do ML Kit
     private fun getMLKitLanguage(code: String): String {
         return when (code.take(2).lowercase()) {
             "pt" -> TranslateLanguage.PORTUGUESE
@@ -42,12 +40,16 @@ class TranslationManager(private val apiKey: String) {
         
         val translator = Translation.getClient(options)
         
-        return try {
-            translator.downloadModelIfNeeded(conditions).await()
-            translators[key] = translator
-            true
-        } catch (e: Exception) {
-            false
+        // CORREÇÃO: Usando Callbacks nativos do Android em vez do .await()
+        return suspendCancellableCoroutine { continuation ->
+            translator.downloadModelIfNeeded(conditions)
+                .addOnSuccessListener {
+                    translators[key] = translator
+                    continuation.resume(true)
+                }
+                .addOnFailureListener {
+                    continuation.resume(false)
+                }
         }
     }
 
@@ -61,16 +63,21 @@ class TranslationManager(private val apiKey: String) {
         val tgt = getMLKitLanguage(targetLang)
         val key = "${src}_${tgt}"
 
-        val translator = translators[key] ?: return "Erro: Modelo não baixado."
+        val translator = translators[key]
+        if (translator == null) return "Erro: Modelo não baixado."
 
-        return try {
-            translator.translate(text).await()
-        } catch (e: Exception) {
-            "Erro de tradução: ${e.message}"
+        // CORREÇÃO: Usando Callbacks nativos do Android em vez do .await()
+        return suspendCancellableCoroutine { continuation ->
+            translator.translate(text)
+                .addOnSuccessListener { translatedText ->
+                    continuation.resume(translatedText)
+                }
+                .addOnFailureListener { e ->
+                    continuation.resume("Erro de tradução: ${e.message}")
+                }
         }
     }
 
-    // A LENTE DE CONTATO DE PROBABILIDADE (Criada pelo Denis)
     suspend fun detectLanguageSmart(
         text: String,
         leftLang: String,
@@ -81,7 +88,6 @@ class TranslationManager(private val apiKey: String) {
         return suspendCancellableCoroutine { continuation ->
             val languageIdentifier = LanguageIdentification.getClient()
             
-            // Pede a lista de todas as probabilidades possíveis
             languageIdentifier.identifyPossibleLanguages(text)
                 .addOnSuccessListener { identifiedLanguages ->
                     var leftConfidence = 0.0f
@@ -98,24 +104,19 @@ class TranslationManager(private val apiKey: String) {
                         AppLogger.log("[ML Kit] Idioma: ${language.languageTag} | Probabilidade: ${language.confidence}")
                     }
 
-                    // A REGRA DOS 70%:
-                    // Se o idioma da Esquerda (ex: PT) bater mais de 70% de certeza (0.70)
                     val detected = if (leftConfidence > 0.70f) {
                         AppLogger.log("[ML Kit] Decisão: Bateu $leftConfidence (> 0.70) -> É $leftLang!")
                         leftLang
                     } else if (rightConfidence > leftConfidence) {
-                        // Se não chegou a 70%, o outro idioma ganha o foco
                         AppLogger.log("[ML Kit] Decisão: Menor que 0.70, jogando para $rightLang!")
                         rightLang
                     } else {
-                        // Empate ou ruído absoluto, mantém o que tem maior pontuação
                         if (leftConfidence > 0) leftLang else rightLang
                     }
 
                     continuation.resume(detected)
                 }
                 .addOnFailureListener {
-                    // Se o sistema falhar, mantém o idioma em que a pessoa tocou por último
                     continuation.resume(if (lastLang.isNotEmpty()) lastLang else leftLang)
                 }
         }
