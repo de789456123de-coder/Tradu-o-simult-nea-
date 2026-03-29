@@ -20,7 +20,7 @@ Java_com_seuprojeto_translator_WhisperLib_initContext(JNIEnv *env, jobject thiz,
         LOGE("Falha ao inicializar Whisper");
         return 0;
     }
-    LOGI("Modelo carregado com sucesso!");
+    LOGI("Modelo carregado!");
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -39,6 +39,12 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
     wparams.print_realtime = false;
     wparams.n_threads      = 4;
 
+    // Filtros anti-alucinação
+    wparams.no_context     = true;
+    wparams.single_segment = true;
+    wparams.entropy_thold  = 2.8f;
+    wparams.logprob_thold  = -1.0f;
+
     LOGI("Transcrevendo %d samples...", audio_len);
     int ret = whisper_full(ctx, wparams, audio_elements, audio_len);
     env->ReleaseFloatArrayElements(audio_data, audio_elements, JNI_ABORT);
@@ -55,6 +61,11 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
     std::string result_text = "";
     for (int i = 0; i < n_segments; ++i) {
         result_text += whisper_full_get_segment_text(ctx, i);
+    }
+
+    // Remove espaço inicial comum no Whisper
+    if (!result_text.empty() && result_text[0] == ' ') {
+        result_text = result_text.substr(1);
     }
 
     LOGI("Resultado [%s]: %s", lang_str.c_str(), result_text.c_str());
