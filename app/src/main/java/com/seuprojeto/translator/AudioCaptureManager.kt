@@ -19,7 +19,7 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
     @SuppressLint("MissingPermission")
     fun startRecordingAndTranscribing(onTranscriptionResult: (String) -> Unit) {
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.UNPROCESSED,
             sampleRate, channelConfig, audioFormat, bufferSize
         )
 

@@ -44,6 +44,7 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
     wparams.single_segment = true;
     wparams.entropy_thold  = 2.8f;
     wparams.logprob_thold  = -1.0f;
+    wparams.temperature_inc = 0.0f;
 
     LOGI("Transcrevendo %d samples...", audio_len);
     int ret = whisper_full(ctx, wparams, audio_elements, audio_len);
