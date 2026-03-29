@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioChannelManager
     private lateinit var speechManager: SpeechManager
     private lateinit var translationManager: TranslationManager
+    private lateinit var geminiManager: GeminiManager
 
     private var isAudioReady = false
     private var modelsReady = false
@@ -59,6 +60,7 @@ class MainActivity : AppCompatActivity() {
         requestMicPermission()
         
         translationManager = TranslationManager()
+        geminiManager = GeminiManager()
         audioManager = AudioChannelManager(this)
         audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
             onReady = { runOnUiThread { isAudioReady = true } })
