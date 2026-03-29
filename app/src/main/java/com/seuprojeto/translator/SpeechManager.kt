@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
 
 class SpeechManager(private val context: Context) {
 
@@ -63,24 +62,33 @@ class SpeechManager(private val context: Context) {
         })
     }
 
-    // A LENTE DIRECIONAL: Foca num único idioma e aplica os filtros de hardware
+    // Modo Walkie-Talkie (Foco 100% num idioma)
     fun startListening(langCode: String) {
         if (isListening) stopListening()
-        
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, langCode)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
-        
         isListening = true
-        try {
-            recognizer?.startListening(intent)
-        } catch (e: Exception) {
-            isListening = false
-            onError?.invoke("Erro ao abrir microfone")
+        try { recognizer?.startListening(intent) }
+        catch (e: Exception) { isListening = false; onError?.invoke("Erro ao abrir microfone") }
+    }
+
+    // Modo Contínuo (Tenta escutar ambos)
+    fun startListeningContinuous(primaryLang: String, secondaryLang: String) {
+        if (isListening) stopListening()
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, primaryLang)
+            putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf(primaryLang, secondaryLang))
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
+        isListening = true
+        try { recognizer?.startListening(intent) }
+        catch (e: Exception) { isListening = false; onError?.invoke("Erro ao abrir microfone") }
     }
 
     fun stopListening() {
