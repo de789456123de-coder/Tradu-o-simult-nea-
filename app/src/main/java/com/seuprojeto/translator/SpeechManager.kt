@@ -44,11 +44,11 @@ class SpeechManager(private val context: Context) {
                 onListeningState?.invoke(false)
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val text = matches?.firstOrNull() ?: return
-                if (text.length > 1) onSpeechResult?.invoke(text)
+                if (text.isNotBlank()) onSpeechResult?.invoke(text)
             }
             override fun onPartialResults(partialResults: Bundle?) {
                 val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
-                if (partial.length > 1) onPartialSpeech?.invoke(partial)
+                if (partial.isNotBlank()) onPartialSpeech?.invoke(partial)
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
@@ -61,9 +61,7 @@ class SpeechManager(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, langCode)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            // Filtros de Ruído para Modo Manual
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
+            // REMOVIDOS os filtros de silêncio que estavam a cortar a tua voz
         }
         isListening = true
         try { recognizer?.startListening(intent) }
@@ -78,10 +76,7 @@ class SpeechManager(private val context: Context) {
             putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf(primaryLang, secondaryLang))
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            // FILTROS AVANÇADOS DE RUÍDO (Obriga a ignorar ruídos curtos)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L) // Demora mais para cortar
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800L) // Ignora ruídos rápidos (ex: tosses)
+            // REMOVIDOS os filtros agressivos. Vamos deixar o Android gerir o tempo naturalmente.
         }
         isListening = true
         try { recognizer?.startListening(intent) }

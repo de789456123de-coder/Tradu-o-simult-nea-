@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
                     // Delay de 100ms para a placa de áudio do celular não travar com religações muito rápidas
                     Handler(Looper.getMainLooper()).postDelayed({
                         if (isContinuousMode) speechManager.startListeningContinuous(ptCode, enCode)
-                    }, 100)
+                    }, 600)
                 } else {
                     // Se estiver no modo manual, mostra o erro e para
                     setStatus(msg)
