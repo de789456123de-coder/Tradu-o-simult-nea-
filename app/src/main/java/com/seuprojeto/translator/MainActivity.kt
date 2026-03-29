@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity() {
     private var activeLanguageCode = ""
     private var isLeftTalking = true
 
-    private val API_KEY = "AIzaSyAmTZS9c0xiaJZMe62s_AgsONhOsyboMFI"
+    
 
     private var leftLangCode = "pt"
     private var rightLangCode = "en"
@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         updateLabels()
         requestMicPermission()
         
-        translationManager = TranslationManager(API_KEY)
+        translationManager = TranslationManager()
         audioManager = AudioChannelManager(this)
         audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
             onReady = { runOnUiThread { isAudioReady = true } })

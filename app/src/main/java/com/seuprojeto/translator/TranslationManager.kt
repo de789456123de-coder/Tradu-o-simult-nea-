@@ -9,7 +9,7 @@ import com.google.mlkit.common.model.DownloadConditions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
-class TranslationManager(private val apiKey: String) {
+class TranslationManager() {
 
     private val translators = mutableMapOf<String, Translator>()
     private val conditions = DownloadConditions.Builder().build()
