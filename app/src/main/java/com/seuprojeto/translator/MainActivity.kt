@@ -35,6 +35,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.init(this)
+        AppLogger.log("App Aberto - UI Inicializada")
         setContentView(R.layout.activity_main)
 
         leftLangCode  = intent.getStringExtra("LEFT_LANG_CODE")  ?: "pt"

@@ -28,14 +28,14 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
             sampleRate, channelConfig, audioFormat, bufferSize
         )
 
-        audioRecord?.startRecording()
+        AppLogger.log("Microfone Ligado - Iniciando loop de captura"); audioRecord?.startRecording()
         isRecording = true
 
         CoroutineScope(Dispatchers.IO).launch {
             val chunkSamples = 1600
             val shortBuffer = ShortArray(chunkSamples)
 
-            var isSpeaking = false
+            var AppLogger.log("Silêncio detectado. Fechando pacote de áudio."); isSpeaking = false
             var silenceMs = 0
             val MAX_SILENCE_MS = 800
             val MIN_VOICE_ENERGY = 1000.0
@@ -73,7 +73,7 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                     }
 
                     if (isSpeaking && silenceMs >= MAX_SILENCE_MS) {
-                        isSpeaking = false 
+                        AppLogger.log("Silêncio detectado. Fechando pacote de áudio."); isSpeaking = false 
                         
                         if (speechBuffer.size > 8000) { 
                             val floatArrayToSend = speechBuffer.toFloatArray()
@@ -81,8 +81,8 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                             // ISOLAMENTO: O Whisper processa aqui e o microfone continua lendo lá em cima!
                             launch {
                                 val startTime = System.currentTimeMillis()
-                                val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
-                                val elapsed = System.currentTimeMillis() - startTime
+                                AppLogger.log("Enviando ${floatArrayToSend.size} samples para o C++ (Whisper)"); val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
+                                val elapsed = System.currentTimeMillis() - startTime; AppLogger.log("C++ Retornou em ${elapsed}ms: $result")
 
                                 val parts = result.split("|")
                                 if (parts.size >= 2) {
