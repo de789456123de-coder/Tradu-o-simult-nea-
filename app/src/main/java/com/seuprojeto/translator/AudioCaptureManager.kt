@@ -41,7 +41,9 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
             var isSpeaking = false
             var silenceMs = 0
             val MAX_SILENCE_MS = 800
-            val MIN_VOICE_ENERGY = 1200.0
+            
+            // 1. AUMENTAMOS A RÉGUA: Agora precisa falar alto para ele começar a gravar
+            val MIN_VOICE_ENERGY = 2500.0 
 
             val speechBuffer = mutableListOf<Float>()
 
@@ -67,12 +69,15 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                         }
                     }
 
-                    // --- AQUI ESTÁ A CORREÇÃO DO MEMORY LEAK ---
-                    if (isSpeaking && silenceMs >= MAX_SILENCE_MS) {
-                        isSpeaking = false // Encerra o turno de fala imediatamente
+                    val reachedSilence = isSpeaking && silenceMs >= MAX_SILENCE_MS
+                    // 2. A GUILHOTINA: Bateu 5 segundos de gravação (80000 samples)? Corta e traduz na hora.
+                    val reachedMaxLength = isSpeaking && speechBuffer.size >= (16000 * 5)
+
+                    if (reachedSilence || reachedMaxLength) {
+                        isSpeaking = false 
                         
-                        // Só manda pro Whisper se a gravação for maior que 1 segundo (16000 samples)
-                        if (speechBuffer.size > 16000) {
+                        // Mínimo de ~0.7 segundos para não tentar traduzir uma tosse
+                        if (speechBuffer.size > 12000) { 
                             val floatArrayToSend = speechBuffer.toFloatArray()
                             
                             val startTime = System.currentTimeMillis()
@@ -87,19 +92,19 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                                     !lower.contains("subtitles by") &&
                                     !lower.contains("amara.org") &&
                                     !lower.contains("www.") &&
-                                    !lower.contains("thank you for watching") &&
+                                    !lower.contains("thank you for") &&
                                     !lower.contains("transcribed by")) {
                                     withContext(Dispatchers.Main) {
+                                        // Forçando a exibição do tempo para debug
                                         onTranscriptionResult("$result [${elapsed}ms]")
                                     }
                                 }
                             }
                         }
                         
-                        // Limpa o buffer obrigatoriamente para não estourar a memória RAM!
                         speechBuffer.clear()
+                        silenceMs = 0
                     }
-                    // -------------------------------------------
                 }
             }
         }
