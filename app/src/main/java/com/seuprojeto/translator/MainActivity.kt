@@ -18,12 +18,14 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
     private lateinit var audioManager: AudioChannelManager
+    private lateinit var speechManager: SpeechManager
     private lateinit var whisperManager: WhisperManager
     private lateinit var translationManager: TranslationManager
 
     private var isAudioReady = false
     private var isListening = false
     private var modelsReady = false
+    private var lastDetectedLang = ""
 
     private val API_KEY = "AIzaSyAmTZS9c0xiaJZMe62s_AgsONhOsyboMFI"
 
@@ -52,14 +54,13 @@ class MainActivity : AppCompatActivity() {
 
         translationManager = TranslationManager(API_KEY)
         audioManager = AudioChannelManager(this)
-        audioManager.init(
-            leftLang = leftLangCode,
-            rightLang = rightLangCode,
-            onReady = { runOnUiThread { isAudioReady = true } }
-        )
+        audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
+            onReady = { runOnUiThread { isAudioReady = true } })
+
+        speechManager = SpeechManager(this)
+        speechManager.init(leftLangCode, rightLangCode)
 
         whisperManager = WhisperManager(this)
-
         whisperManager.onStatusUpdate = { msg -> setStatus(msg) }
 
         lifecycleScope.launch {
@@ -70,60 +71,75 @@ class MainActivity : AppCompatActivity() {
             val whisperOk = whisperManager.init()
             val ctx = if (currentContext != ContextManager.ConversationContext.GENERAL)
                 " · ${currentContext.emoji}" else ""
-            setStatus(if (whisperOk && modelsReady) "✅ Offline$ctx" else if (whisperOk) "✅ Whisper$ctx" else "❌ Erro Whisper")
+            setStatus(if (modelsReady && whisperOk) "✅ Offline + Whisper$ctx"
+                      else if (modelsReady) "✅ Offline$ctx"
+                      else "✅ Online$ctx")
         }
 
-        whisperManager.onTranscription = { text, detectedLang ->
+        // Texto parcial em tempo real
+        speechManager.onPartialSpeech = { partial ->
+            runOnUiThread { findViewById<TextView>(R.id.tv_left).text = "💬 $partial" }
+        }
+
+        // Resultado do STT nativo — rápido!
+        speechManager.onSpeechResult = { text, _ ->
             lifecycleScope.launch {
+                setStatus("🔍 Detectando idioma...")
+
+                // Usa Whisper para detectar idioma OU TranslationManager
+                val detectedLang = if (whisperManager.isReady()) {
+                    whisperManager.detectLanguage(leftLangCode, rightLangCode)
+                } else {
+                    translationManager.detectLanguageSmart(
+                        text, leftLangCode, rightLangCode, lastDetectedLang, currentContext)
+                }
+                lastDetectedLang = detectedLang
+
                 setStatus("🔄 Traduzindo...")
 
-                if (detectedLang == leftLangCode || detectedLang.startsWith(leftLangCode)) {
+                if (detectedLang == leftLangCode) {
                     runOnUiThread {
                         setActiveCard(left = true)
                         animateText(findViewById(R.id.tv_left), text)
                     }
-                    val translated = translationManager.translate(text, leftLangCode, rightLangCode, currentContext)
+                    val translated = translationManager.translate(
+                        text, leftLangCode, rightLangCode, currentContext)
                     runOnUiThread { animateText(findViewById(R.id.tv_right), translated) }
-                    if (isAudioReady) {
-                        whisperManager.stopListening()
-                        audioManager.speakRight(translated)
-                        if (isListening) whisperManager.startListening()
-                    }
+                    if (isAudioReady) audioManager.speakRight(translated)
                 } else {
                     runOnUiThread {
                         setActiveCard(left = false)
                         animateText(findViewById(R.id.tv_right), text)
                     }
-                    val translated = translationManager.translate(text, rightLangCode, leftLangCode, currentContext)
+                    val translated = translationManager.translate(
+                        text, rightLangCode, leftLangCode, currentContext)
                     runOnUiThread { animateText(findViewById(R.id.tv_left), translated) }
-                    if (isAudioReady) {
-                        whisperManager.stopListening()
-                        audioManager.speakLeft(translated)
-                        if (isListening) whisperManager.startListening()
-                    }
+                    if (isAudioReady) audioManager.speakLeft(translated)
                 }
 
                 runOnUiThread { resetActiveCards() }
-                setStatus("🎙 Ouvindo (Whisper)...")
+                setStatus("🎙 Ouvindo...")
             }
         }
 
-        whisperManager.onListeningState = { active ->
+        speechManager.onListeningState = { active ->
             runOnUiThread { if (isListening) setMicIcon(active) }
         }
 
         findViewById<Button>(R.id.btn_listen).setOnClickListener {
             if (!isListening) {
-                whisperManager.startListening()
+                speechManager.startListening()
                 isListening = true
+                lastDetectedLang = ""
                 findViewById<Button>(R.id.btn_listen).apply {
                     text = "⏹ Parar"
                     setBackgroundResource(R.drawable.btn_mic_active)
                 }
                 setStatus("🎙 Ouvindo...")
             } else {
-                whisperManager.stopListening()
+                speechManager.stopListening()
                 isListening = false
+                lastDetectedLang = ""
                 resetActiveCards()
                 findViewById<Button>(R.id.btn_listen).apply {
                     text = "▶ Iniciar Conversa"
@@ -136,13 +152,15 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<ImageButton>(R.id.btn_swap).setOnClickListener {
             val wasListening = isListening
-            if (wasListening) { whisperManager.stopListening(); isListening = false }
+            if (wasListening) { speechManager.stopListening(); isListening = false }
 
             val tmpCode = leftLangCode; val tmpName = leftLangName
             leftLangCode = rightLangCode; leftLangName = rightLangName
             rightLangCode = tmpCode; rightLangName = tmpName
 
+            lastDetectedLang = ""
             updateLabels()
+            speechManager.init(leftLangCode, rightLangCode)
             audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
                 onReady = { runOnUiThread { isAudioReady = true } })
 
@@ -152,8 +170,7 @@ class MainActivity : AppCompatActivity() {
                 translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
                 setStatus("🔄 Trocado!")
                 if (wasListening) {
-                    whisperManager.startListening()
-                    isListening = true
+                    speechManager.startListening(); isListening = true
                     setStatus("🎙 Ouvindo...")
                 }
             }
@@ -208,13 +225,15 @@ class MainActivity : AppCompatActivity() {
     private fun requestMicPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+            ActivityCompat.requestPermissions(this,
+                arrayOf(Manifest.permission.RECORD_AUDIO), 1)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         audioManager.release()
+        speechManager.release()
         whisperManager.release()
         translationManager.release()
     }
