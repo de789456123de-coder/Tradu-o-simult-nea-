@@ -6,9 +6,9 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.animation.AnimationUtils
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -17,56 +17,49 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var audioManager: AudioChannelManager
     private lateinit var speechManager: SpeechManager
     private lateinit var translationManager: TranslationManager
     private lateinit var geminiManager: GeminiManager
 
     private var isAudioReady = false
-    private var modelsReady = false
     private var isContinuousMode = false
     private var lastDetectedLang = ""
     private var currentContext = ContextManager.ConversationContext.GENERAL
+    private var leftLangCode = "pt"; private var rightLangCode = "en"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        leftLangCode = intent.getStringExtra("LEFT_LANG_CODE") ?: "pt"
+        rightLangCode = intent.getStringExtra("RIGHT_LANG_CODE") ?: "en"
         val contextName = intent.getStringExtra("SELECTED_CONTEXT") ?: "GENERAL"
-        currentContext = try { ContextManager.ConversationContext.valueOf(contextName) } 
-                        catch(e: Exception) { ContextManager.ConversationContext.GENERAL }
+        currentContext = try { ContextManager.ConversationContext.valueOf(contextName) } catch(e: Exception) { ContextManager.ConversationContext.GENERAL }
 
         translationManager = TranslationManager()
         geminiManager = GeminiManager()
         audioManager = AudioChannelManager(this)
-        audioManager.init("pt", "en") { runOnUiThread { isAudioReady = true } }
+        audioManager.init(leftLangCode, rightLangCode) { runOnUiThread { isAudioReady = true } }
         speechManager = SpeechManager(this)
 
         lifecycleScope.launch {
-            setStatus("⬇️ Preparando Offline...")
-            val ok1 = translationManager.prepareOfflineModel("pt", "en")
-            val ok2 = translationManager.prepareOfflineModel("en", "pt")
-            modelsReady = ok1 && ok2
-
-            // TESTE DE CONEXÃO GEMINI
-            setStatus("📡 Testando Gemini...")
-            val testResult = geminiManager.translateWithContext("Oi", "pt", "en", "Teste rápido")
-            if (!testResult.contains("Erro")) {
-                setStatus("✨ Gemini Online (${currentContext.emoji})")
-            } else {
-                setStatus("✅ Modo Offline (${currentContext.emoji})")
-            }
+            setStatus("📡 Conectando ao Gemini...")
+            val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
+            val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
+            
+            val test = geminiManager.translateWithContext("Oi", "pt", "en", "Teste")
+            if (!test.contains("Erro")) setStatus("✨ Gemini Online (${currentContext.emoji})")
+            else setStatus("✅ Modo Offline (${currentContext.emoji})")
         }
 
         findViewById<Button>(R.id.btn_listen).setOnClickListener {
             if (!isContinuousMode) {
                 isContinuousMode = true
                 (it as Button).text = "⏹ Parar Conversa"
-                speechManager.startListeningContinuous("pt-BR", "en-US")
+                speechManager.startListeningContinuous(if(leftLangCode=="pt")"pt-BR" else "en-US", if(rightLangCode=="en")"en-US" else "pt-BR")
             } else {
-                isContinuousMode = false
-                speechManager.stopListening()
+                isContinuousMode = false; speechManager.stopListening()
                 (it as Button).text = "▶ Iniciar Conversa"
                 setStatus("● Pausado")
             }
@@ -75,27 +68,23 @@ class MainActivity : AppCompatActivity() {
         speechManager.onSpeechResult = { text ->
             lifecycleScope.launch {
                 setStatus("🔍 Analisando...")
-                val detectedLang = translationManager.detectLanguageSmart(text, "pt", "en", lastDetectedLang, currentContext)
-                lastDetectedLang = detectedLang
-                val targetCode = if (detectedLang == "pt") "en" else "pt"
+                val detected = translationManager.detectLanguageSmart(text, leftLangCode, rightLangCode, lastDetectedLang, currentContext)
+                lastDetectedLang = detected
+                val target = if (detected == leftLangCode) rightLangCode else leftLangCode
                 
                 setStatus("✨ Gemini Traduzindo...")
-                var translated = geminiManager.translateWithContext(text, detectedLang, targetCode, currentContext.instruction)
-
-                if (translated.contains("Erro")) {
-                    setStatus("🔄 Offline (Sem Sinal)...")
-                    translated = translationManager.translate(text, detectedLang, targetCode, currentContext)
-                }
+                var res = geminiManager.translateWithContext(text, detected, target, currentContext.instruction)
+                if (res.contains("Erro")) res = translationManager.translate(text, detected, target, currentContext)
 
                 runOnUiThread {
-                    findViewById<TextView>(if (detectedLang == "pt") R.id.tv_left else R.id.tv_right).text = text
-                    findViewById<TextView>(if (detectedLang == "pt") R.id.tv_right else R.id.tv_left).text = translated
+                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_left else R.id.tv_right).text = text
+                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_right else R.id.tv_left).text = res
                 }
 
                 if (isAudioReady) {
                     speechManager.stopListening()
-                    if (detectedLang == "pt") audioManager.speakRight(translated) else audioManager.speakLeft(translated)
-                    delay((translated.length * 85L) + 1200L)
+                    if (detected == leftLangCode) audioManager.speakRight(res) else audioManager.speakLeft(res)
+                    delay((res.length * 85L) + 1200L)
                     if (isContinuousMode) speechManager.startListeningContinuous("pt-BR", "en-US")
                 }
                 setStatus("🎙 ${currentContext.emoji} Ouvindo...")

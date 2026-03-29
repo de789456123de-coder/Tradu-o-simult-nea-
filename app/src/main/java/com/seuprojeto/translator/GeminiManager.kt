@@ -10,10 +10,7 @@ import java.io.IOException
 import kotlin.coroutines.resume
 
 class GeminiManager {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
+    private val client = OkHttpClient()
     private val apiKey = "AIzaSyAVhnSi2UjE0VQ7zh56FBIT5ScLvhvUMNo"
     private val apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
 
@@ -23,43 +20,51 @@ class GeminiManager {
         targetLang: String,
         contextInstruction: String
     ): String {
-        return suspendCancellableCoroutine { cont ->
-            val prompt = "Você é um tradutor especialista. $contextInstruction\n" +
-                "Traduza de $sourceLang para $targetLang. Retorne APENAS a tradução, sem explicações.\n" +
-                "Frase: \"$text\""
+        return suspendCancellableCoroutine { continuation ->
+            val prompt = """
+                Atue como um tradutor especialista. Contexto: $contextInstruction
+                Traduza de $sourceLang para $targetLang.
+                Retorne APENAS o texto traduzido.
+                Texto: "$text"
+            """.trimIndent()
 
+            // ESTRUTURA CORRETA: contents -> [ { parts: [ { text: "..." } ] } ]
             val json = JSONObject().apply {
-                put("contents", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("parts", JSONArray().apply {
+                val contentsArray = JSONArray().apply {
+                    val contentObj = JSONObject().apply {
+                        val partsArray = JSONArray().apply {
                             put(JSONObject().apply { put("text", prompt) })
-                        })
-                    })
-                })
+                        }
+                        put("parts", partsArray)
+                    }
+                    put(contentObj)
+                }
+                put("contents", contentsArray)
             }
 
             val request = Request.Builder()
                 .url(apiUrl)
-                .post(json.toString().toRequestBody("application/json".toMediaType()))
+                .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    cont.resume("Erro: ${e.message}")
+                    continuation.resume("Erro de conexão")
                 }
+
                 override fun onResponse(call: Call, response: Response) {
+                    val body = response.body?.string()
                     try {
-                        val body = response.body?.string() ?: ""
-                        val translated = JSONObject(body)
-                            .getJSONArray("candidates")
+                        val resJson = JSONObject(body ?: "")
+                        val translated = resJson.getJSONArray("candidates")
                             .getJSONObject(0)
                             .getJSONObject("content")
                             .getJSONArray("parts")
                             .getJSONObject(0)
                             .getString("text")
-                        cont.resume(translated.trim())
+                        continuation.resume(translated.trim())
                     } catch (e: Exception) {
-                        cont.resume("Erro: ${e.message}")
+                        continuation.resume("Erro: Falha na resposta da IA")
                     }
                 }
             })
