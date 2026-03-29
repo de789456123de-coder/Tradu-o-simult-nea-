@@ -10,7 +10,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.math.sqrt
 
 class AudioCaptureManager(private val whisperLib: WhisperLib, private val contextPtr: Long) {
-
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
     private val whisperMutex = Mutex() 
@@ -21,23 +20,17 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
     private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat) * 2
 
     @SuppressLint("MissingPermission")
-    fun startRecordingAndTranscribing(
-        onVolumeUpdate: (Int) -> Unit,
-        onTranscriptionResult: (String) -> Unit
-    ) {
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.UNPROCESSED,
-            sampleRate, channelConfig, audioFormat, bufferSize
-        )
+    fun startRecordingAndTranscribing(onVolumeUpdate: (Int) -> Unit, onTranscriptionResult: (String) -> Unit) {
+        AppLogger.log("[AudioCapture] Preparando AudioRecord (UNPROCESSED)...")
+        audioRecord = AudioRecord(MediaRecorder.AudioSource.UNPROCESSED, sampleRate, channelConfig, audioFormat, bufferSize)
 
-        AppLogger.log("Microfone Ligado - Iniciando loop de captura")
+        AppLogger.log("[AudioCapture] startRecording() disparado.")
         audioRecord?.startRecording()
         isRecording = true
 
         CoroutineScope(Dispatchers.IO).launch {
             val chunkSamples = 1600
             val shortBuffer = ShortArray(chunkSamples)
-
             var isSpeaking = false
             var silenceMs = 0
             val MAX_SILENCE_MS = 800
@@ -47,13 +40,12 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
             val preRollBuffer = ArrayDeque<FloatArray>()
             var loopCount = 0
 
+            AppLogger.log("[AudioCapture] Loop infinito do VAD iniciado.")
             while (isRecording) {
                 val readSize = audioRecord?.read(shortBuffer, 0, chunkSamples) ?: 0
                 if (readSize > 0) {
                     var energy = 0.0
-                    for (i in 0 until readSize) {
-                        energy += (shortBuffer[i].toInt() * shortBuffer[i].toInt()).toDouble()
-                    }
+                    for (i in 0 until readSize) energy += (shortBuffer[i].toInt() * shortBuffer[i].toInt()).toDouble()
                     energy = sqrt(energy / readSize)
 
                     loopCount++
@@ -66,6 +58,7 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
 
                     if (energy > MIN_VOICE_ENERGY) {
                         if (!isSpeaking) {
+                            AppLogger.log("[AudioCapture] Início de fala detectado! (Energia: ${energy.toInt()})")
                             isSpeaking = true
                             preRollBuffer.forEach { speechBuffer.addAll(it.toList()) }
                         }
@@ -79,46 +72,42 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                         }
                     }
 
-                    if (isSpeaking) {
-                        speechBuffer.addAll(floatChunk.toList())
-                    }
+                    if (isSpeaking) speechBuffer.addAll(floatChunk.toList())
 
                     val reachedSilence = isSpeaking && silenceMs >= MAX_SILENCE_MS
                     val reachedMaxTime = isSpeaking && speechBuffer.size >= 80000
 
                     if (reachedSilence || reachedMaxTime) {
-                        AppLogger.log("Fim de fala detectado. Fechando pacote de áudio.")
+                        val motivo = if (reachedSilence) "Silêncio de ${MAX_SILENCE_MS}ms" else "Limite de 5s atingido"
+                        AppLogger.log("[AudioCapture] Guilhotina ativada ($motivo). Fechando pacote...")
                         isSpeaking = false 
                         
                         if (speechBuffer.size > 8000) { 
                             val floatArrayToSend = speechBuffer.toFloatArray()
+                            AppLogger.log("[AudioCapture] Tamanho do áudio capturado: ${floatArrayToSend.size} amostras.")
                             
                             launch {
+                                AppLogger.log("[AudioCapture] Coroutine criada. Aguardando Mutex do C++...")
                                 whisperMutex.withLock {
-                                    AppLogger.log("Enviando ${floatArrayToSend.size} samples para o C++ (Whisper)")
+                                    AppLogger.log("[AudioCapture] Mutex obtido! Injetando ${floatArrayToSend.size} no C++.")
                                     val startTime = System.currentTimeMillis()
                                     val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
                                     val elapsed = System.currentTimeMillis() - startTime
-                                    AppLogger.log("C++ Retornou em ${elapsed}ms: $result")
+                                    AppLogger.log("[AudioCapture] C++ devolveu em ${elapsed}ms: $result")
 
                                     val parts = result.split("|")
                                     if (parts.size >= 2) {
-                                        val text = parts[1].trim()
-                                        val lower = text.lowercase()
-                                        if (text.isNotBlank() &&
-                                            !lower.contains("subtitles by") &&
-                                            !lower.contains("amara.org") &&
-                                            !lower.contains("www.") &&
-                                            !lower.contains("[blank_audio]") &&
-                                            !lower.contains("слушаю") &&
-                                            !lower.contains("thank you for")) {
-                                            withContext(Dispatchers.Main) {
-                                                onTranscriptionResult("$result [${elapsed}ms]")
-                                            }
+                                        val text = parts[1].trim().lowercase()
+                                        if (text.isNotBlank() && !text.contains("subtitles by") && !text.contains("[blank_audio]")) {
+                                            withContext(Dispatchers.Main) { onTranscriptionResult("$result [${elapsed}ms]") }
+                                        } else {
+                                            AppLogger.log("[AudioCapture] Alucinação bloqueada pelo filtro: $text")
                                         }
                                     }
                                 }
                             }
+                        } else {
+                            AppLogger.log("[AudioCapture] Áudio muito curto descartado (${speechBuffer.size} amostras).")
                         }
                         speechBuffer.clear()
                         preRollBuffer.clear()
@@ -126,10 +115,12 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                     }
                 }
             }
+            AppLogger.log("[AudioCapture] Loop do VAD encerrado.")
         }
     }
 
     fun stopRecording() {
+        AppLogger.log("[AudioCapture] stopRecording() chamado. Encerrando hardware de áudio.")
         isRecording = false
         audioRecord?.stop()
         audioRecord?.release()

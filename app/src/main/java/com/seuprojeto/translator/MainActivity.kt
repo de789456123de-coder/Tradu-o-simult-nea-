@@ -14,10 +14,10 @@ import androidx.cardview.widget.CardView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var audioManager: AudioChannelManager
     private lateinit var whisperManager: WhisperManager
     private lateinit var translationManager: TranslationManager
@@ -26,220 +26,97 @@ class MainActivity : AppCompatActivity() {
     private var modelsReady = false
 
     private val API_KEY = "AIzaSyAmTZS9c0xiaJZMe62s_AgsONhOsyboMFI"
-
-    private var leftLangCode = "pt"
-    private var rightLangCode = "en"
-    private var leftLangName = "Português"
-    private var rightLangName = "Inglês"
+    private var leftLangCode = "pt"; private var rightLangCode = "en"
     private var currentContext = ContextManager.ConversationContext.GENERAL
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        AppLogger.init(this)
-        AppLogger.log("App Aberto - UI Inicializada")
         setContentView(R.layout.activity_main)
+        
+        AppLogger.init(this) // Inicia o Raio-X Turbinado
+        AppLogger.log("[MainActivity] onCreate() disparado.")
 
-        leftLangCode  = intent.getStringExtra("LEFT_LANG_CODE")  ?: "pt"
+        leftLangCode = intent.getStringExtra("LEFT_LANG_CODE") ?: "pt"
         rightLangCode = intent.getStringExtra("RIGHT_LANG_CODE") ?: "en"
-        leftLangName  = intent.getStringExtra("LEFT_LANG_NAME")  ?: "Português"
-        rightLangName = intent.getStringExtra("RIGHT_LANG_NAME") ?: "Inglês"
 
-        val contextName = intent.getStringExtra("CONTEXT") ?: "GENERAL"
-        currentContext = try {
-            ContextManager.ConversationContext.valueOf(contextName)
-        } catch (e: Exception) { ContextManager.ConversationContext.GENERAL }
-
-        updateLabels()
         requestMicPermission()
-
+        
         translationManager = TranslationManager(API_KEY)
         audioManager = AudioChannelManager(this)
-        audioManager.init(
-            leftLang = leftLangCode,
-            rightLang = rightLangCode,
-            onReady = { runOnUiThread { isAudioReady = true } }
-        )
+        audioManager.init(leftLangCode, rightLangCode) { 
+            runOnUiThread { isAudioReady = true; AppLogger.log("[MainActivity] AudioChannelManager (TTS) pronto.") } 
+        }
 
-        // Inicializando o novo WhisperManager
         whisperManager = WhisperManager(this)
 
         lifecycleScope.launch {
-            setStatus("⬇️ Preparando offline...")
-            val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
-            val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
-            modelsReady = ok1 && ok2
-            
-            // Inicializa o Whisper (Copia o ggml-tiny.bin e carrega o JNI)
+            AppLogger.log("[MainActivity] Iniciando download/prep de modelos offline...")
+            modelsReady = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
+            AppLogger.log("[MainActivity] Inicializando WhisperManager...")
             val whisperOk = whisperManager.init()
-            
-            val ctx = if (currentContext != ContextManager.ConversationContext.GENERAL)
-                " · ${currentContext.emoji}" else ""
-                
-            if (whisperOk) {
-                setStatus(if (modelsReady) "✅ Offline$ctx" else "✅ Online$ctx")
-            } else {
-                setStatus("❌ Erro no Whisper")
-            }
+            setStatus(if (whisperOk) "✅ Pronto" else "❌ Erro Whisper")
         }
 
-        whisperManager.onStatusUpdate = { msg ->
-            setStatus(msg)
-        }
+        whisperManager.onStatusUpdate = { msg -> setStatus(msg) }
 
-        // A MÁGICA DE DISTRIBUIÇÃO DOS FONES ACONTECE AQUI
         whisperManager.onTranscription = { text, detectedLang ->
+            AppLogger.log("[MainActivity] Recebeu onTranscription. Lang: $detectedLang | Texto: '$text'")
             lifecycleScope.launch {
                 setStatus("🔄 Traduzindo...")
-                Log.d("MainActivity", "Whisper Detectou: '$detectedLang' | Texto: '$text'")
 
-                if (detectedLang == leftLangCode) {
-                    runOnUiThread {
-                        setActiveCard(left = true)
-                        animateText(findViewById(R.id.tv_left), text)
-                    }
-                    val translated = translationManager.translate(
-                        text, leftLangCode, rightLangCode, currentContext)
-                    runOnUiThread { animateText(findViewById(R.id.tv_right), translated) }
+                val isLeft = detectedLang == leftLangCode
+                val sourceCode = if (isLeft) leftLangCode else rightLangCode
+                val targetCode = if (isLeft) rightLangCode else leftLangCode
+                
+                runOnUiThread { animateText(findViewById(if (isLeft) R.id.tv_left else R.id.tv_right), text) }
+                
+                AppLogger.log("[MainActivity] Chamando TranslationManager API ($sourceCode -> $targetCode)...")
+                val translated = translationManager.translate(text, sourceCode, targetCode, currentContext)
+                AppLogger.log("[MainActivity] Tradução concluída: '$translated'")
+                
+                runOnUiThread { animateText(findViewById(if (isLeft) R.id.tv_right else R.id.tv_left), translated) }
+                
+                if (isAudioReady) {
+                    AppLogger.log("[MainActivity] Pausando microfone para o celular falar a tradução.")
+                    whisperManager.stopListening()
                     
-                    if (isAudioReady) {
-                        whisperManager.stopListening() // Pausa escuta para não dar eco da própria voz
-                        audioManager.speakRight(translated)
-                        whisperManager.startListening() // Retoma após falar
-                    }
+                    if (isLeft) audioManager.speakRight(translated) else audioManager.speakLeft(translated)
+                    
+                    val tempoFalaMs = (translated.length * 85L) + 1200L
+                    AppLogger.log("[MainActivity] Aplicando delay calculado de ${tempoFalaMs}ms...")
+                    delay(tempoFalaMs)
+                    
+                    AppLogger.log("[MainActivity] Delay concluído. Religando microfone.")
+                    whisperManager.startListening()
                 } else {
-                    runOnUiThread {
-                        setActiveCard(left = false)
-                        animateText(findViewById(R.id.tv_right), text)
-                    }
-                    val translated = translationManager.translate(
-                        text, rightLangCode, leftLangCode, currentContext)
-                    runOnUiThread { animateText(findViewById(R.id.tv_left), translated) }
-                    
-                    if (isAudioReady) {
-                        whisperManager.stopListening()
-                        audioManager.speakLeft(translated)
-                        whisperManager.startListening()
-                    }
+                    AppLogger.log("[MainActivity] Aviso: TTS não estava pronto.")
                 }
-
-                runOnUiThread { resetActiveCards() }
-                setStatus(if (modelsReady) "● Ouvindo (Whisper)" else "● Ouvindo")
-            }
-        }
-
-        whisperManager.onListeningState = { active ->
-            runOnUiThread {
-                if (isListening) {
-                    setMicIcon(active)
-                }
+                setStatus("● Ouvindo (Whisper)")
             }
         }
 
         findViewById<Button>(R.id.btn_listen).setOnClickListener {
+            AppLogger.log("[MainActivity] Botão Ouvir Clicado. Estado atual isListening=$isListening")
             if (!isListening) {
                 whisperManager.startListening()
                 isListening = true
-                findViewById<Button>(R.id.btn_listen).apply {
-                    text = "⏹ Parar"
-                    setBackgroundResource(R.drawable.btn_mic_active)
-                }
+                findViewById<Button>(R.id.btn_listen).text = "⏹ Parar"
                 setStatus("🎙 Ouvindo...")
             } else {
                 whisperManager.stopListening()
                 isListening = false
-                resetActiveCards()
-                findViewById<Button>(R.id.btn_listen).apply {
-                    text = "▶ Iniciar Conversa"
-                    setBackgroundResource(R.drawable.btn_mic_inactive)
-                }
+                findViewById<Button>(R.id.btn_listen).text = "▶ Iniciar"
                 setStatus("● Pausado")
-                setMicIcon(false)
             }
         }
-
-        findViewById<ImageButton>(R.id.btn_swap).setOnClickListener {
-            val wasListening = isListening
-            if (wasListening) { whisperManager.stopListening(); isListening = false }
-
-            val tmpCode = leftLangCode; val tmpName = leftLangName
-            leftLangCode = rightLangCode; leftLangName = rightLangName
-            rightLangCode = tmpCode; rightLangName = tmpName
-
-            updateLabels()
-            
-            audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
-                onReady = { runOnUiThread { isAudioReady = true } })
-
-            lifecycleScope.launch {
-                setStatus("⬇️ Preparando...")
-                val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
-                val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
-                modelsReady = ok1 && ok2
-                setStatus("🔄 Trocado!")
-                if (wasListening) {
-                    whisperManager.startListening(); isListening = true
-                    setStatus("🎙 Ouvindo...")
-                }
-            }
-        }
-    }
-
-    private fun animateText(view: TextView, text: String) {
-        val anim = AnimationUtils.loadAnimation(this, R.anim.slide_up)
-        view.startAnimation(anim)
-        view.text = text
-    }
-
-    private fun setActiveCard(left: Boolean) {
-        val pulseAnim = AnimationUtils.loadAnimation(this, R.anim.pulse)
-        if (left) {
-            findViewById<CardView>(R.id.card_left).setCardBackgroundColor(0xFF1A1A3E.toInt())
-            findViewById<CardView>(R.id.card_right).setCardBackgroundColor(0xFF0F1A12.toInt())
-            findViewById<View>(R.id.indicator_left).apply { visibility = View.VISIBLE; startAnimation(pulseAnim) }
-            findViewById<View>(R.id.indicator_right).apply { visibility = View.INVISIBLE; clearAnimation() }
-        } else {
-            findViewById<CardView>(R.id.card_right).setCardBackgroundColor(0xFF1A2E1A.toInt())
-            findViewById<CardView>(R.id.card_left).setCardBackgroundColor(0xFF12122A.toInt())
-            findViewById<View>(R.id.indicator_right).apply { visibility = View.VISIBLE; startAnimation(pulseAnim) }
-            findViewById<View>(R.id.indicator_left).apply { visibility = View.INVISIBLE; clearAnimation() }
-        }
-    }
-
-    private fun resetActiveCards() {
-        findViewById<CardView>(R.id.card_left).setCardBackgroundColor(0xFF12122A.toInt())
-        findViewById<CardView>(R.id.card_right).setCardBackgroundColor(0xFF0F1A12.toInt())
-        findViewById<View>(R.id.indicator_left).apply { visibility = View.INVISIBLE; clearAnimation() }
-        findViewById<View>(R.id.indicator_right).apply { visibility = View.INVISIBLE; clearAnimation() }
-    }
-
-    private fun setMicIcon(active: Boolean) {
-        val icon = findViewById<TextView>(R.id.tv_mic_icon)
-        icon.text = if (active) "🎙" else "●"
-        icon.textSize = if (active) 14f else 10f
-    }
-
-    private fun updateLabels() {
-        runOnUiThread {
-            findViewById<TextView>(R.id.tv_left_label).text  = "🎧 $leftLangName"
-            findViewById<TextView>(R.id.tv_right_label).text = "🎧 $rightLangName"
-        }
-    }
-
-    private fun setStatus(msg: String) {
-        runOnUiThread { findViewById<TextView>(R.id.tv_status).text = msg }
     }
 
     private fun requestMicPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        audioManager.release()
-        whisperManager.release()
-        translationManager.release()
-    }
+    private fun setStatus(msg: String) { runOnUiThread { findViewById<TextView>(R.id.tv_status).text = msg } }
+    private fun animateText(view: TextView, text: String) { runOnUiThread { view.text = text } }
 }
