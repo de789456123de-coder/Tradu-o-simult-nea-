@@ -5,12 +5,15 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.sqrt
 
 class AudioCaptureManager(private val whisperLib: WhisperLib, private val contextPtr: Long) {
 
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
+    private val whisperMutex = Mutex() 
 
     private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
@@ -22,25 +25,26 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
         onVolumeUpdate: (Int) -> Unit,
         onTranscriptionResult: (String) -> Unit
     ) {
-        // Fonte UNPROCESSED entrega sua voz limpa pro Whisper sem corromper
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.UNPROCESSED,
             sampleRate, channelConfig, audioFormat, bufferSize
         )
 
-        AppLogger.log("Microfone Ligado - Iniciando loop de captura"); audioRecord?.startRecording()
+        AppLogger.log("Microfone Ligado - Iniciando loop de captura")
+        audioRecord?.startRecording()
         isRecording = true
 
         CoroutineScope(Dispatchers.IO).launch {
             val chunkSamples = 1600
             val shortBuffer = ShortArray(chunkSamples)
 
-            var AppLogger.log("Silêncio detectado. Fechando pacote de áudio."); isSpeaking = false
+            var isSpeaking = false
             var silenceMs = 0
             val MAX_SILENCE_MS = 800
             val MIN_VOICE_ENERGY = 1000.0
 
             val speechBuffer = mutableListOf<Float>()
+            val preRollBuffer = ArrayDeque<FloatArray>()
             var loopCount = 0
 
             while (isRecording) {
@@ -54,55 +58,70 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
 
                     loopCount++
                     if (loopCount % 3 == 0) {
-                        withContext(Dispatchers.Main) {
-                            onVolumeUpdate(energy.toInt())
-                        }
+                        withContext(Dispatchers.Main) { onVolumeUpdate(energy.toInt()) }
                     }
 
+                    val floatChunk = FloatArray(readSize)
+                    for (i in 0 until readSize) floatChunk[i] = shortBuffer[i] / 32768.0f
+
                     if (energy > MIN_VOICE_ENERGY) {
-                        isSpeaking = true
+                        if (!isSpeaking) {
+                            isSpeaking = true
+                            preRollBuffer.forEach { speechBuffer.addAll(it.toList()) }
+                        }
                         silenceMs = 0
                     } else {
-                        if (isSpeaking) silenceMs += 100
+                        if (isSpeaking) {
+                            silenceMs += 100
+                        } else {
+                            preRollBuffer.addLast(floatChunk)
+                            if (preRollBuffer.size > 3) preRollBuffer.removeFirst()
+                        }
                     }
 
                     if (isSpeaking) {
-                        for (i in 0 until readSize) {
-                            speechBuffer.add(shortBuffer[i] / 32768.0f)
-                        }
+                        speechBuffer.addAll(floatChunk.toList())
                     }
 
-                    if (isSpeaking && silenceMs >= MAX_SILENCE_MS) {
-                        AppLogger.log("Silêncio detectado. Fechando pacote de áudio."); isSpeaking = false 
+                    val reachedSilence = isSpeaking && silenceMs >= MAX_SILENCE_MS
+                    val reachedMaxTime = isSpeaking && speechBuffer.size >= 80000
+
+                    if (reachedSilence || reachedMaxTime) {
+                        AppLogger.log("Fim de fala detectado. Fechando pacote de áudio.")
+                        isSpeaking = false 
                         
                         if (speechBuffer.size > 8000) { 
                             val floatArrayToSend = speechBuffer.toFloatArray()
                             
-                            // ISOLAMENTO: O Whisper processa aqui e o microfone continua lendo lá em cima!
                             launch {
-                                val startTime = System.currentTimeMillis()
-                                AppLogger.log("Enviando ${floatArrayToSend.size} samples para o C++ (Whisper)"); val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
-                                val elapsed = System.currentTimeMillis() - startTime; AppLogger.log("C++ Retornou em ${elapsed}ms: $result")
+                                whisperMutex.withLock {
+                                    AppLogger.log("Enviando ${floatArrayToSend.size} samples para o C++ (Whisper)")
+                                    val startTime = System.currentTimeMillis()
+                                    val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
+                                    val elapsed = System.currentTimeMillis() - startTime
+                                    AppLogger.log("C++ Retornou em ${elapsed}ms: $result")
 
-                                val parts = result.split("|")
-                                if (parts.size >= 2) {
-                                    val text = parts[1].trim()
-                                    val lower = text.lowercase()
-                                    if (text.isNotBlank() &&
-                                        !lower.contains("subtitles by") &&
-                                        !lower.contains("amara.org") &&
-                                        !lower.contains("www.") &&
-                                        !lower.contains("[blank_audio]") &&
-                                        !lower.contains("слушаю") &&
-                                        !lower.contains("thank you for")) {
-                                        withContext(Dispatchers.Main) {
-                                            onTranscriptionResult("$result [${elapsed}ms]")
+                                    val parts = result.split("|")
+                                    if (parts.size >= 2) {
+                                        val text = parts[1].trim()
+                                        val lower = text.lowercase()
+                                        if (text.isNotBlank() &&
+                                            !lower.contains("subtitles by") &&
+                                            !lower.contains("amara.org") &&
+                                            !lower.contains("www.") &&
+                                            !lower.contains("[blank_audio]") &&
+                                            !lower.contains("слушаю") &&
+                                            !lower.contains("thank you for")) {
+                                            withContext(Dispatchers.Main) {
+                                                onTranscriptionResult("$result [${elapsed}ms]")
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                         speechBuffer.clear()
+                        preRollBuffer.clear()
                         silenceMs = 0
                     }
                 }
