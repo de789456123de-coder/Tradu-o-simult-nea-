@@ -45,10 +45,15 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
 
                     val startTime = System.currentTimeMillis()
                     val result = whisperLib.transcribeData(contextPtr, floatBuffer)
-                    val elapsed = System.currentTimeMillis() - startTime
+                    val endTime = System.currentTimeMillis()
+                    val tempoGasto = endTime - startTime
 
-                    withContext(Dispatchers.Main) {
-                        onTranscriptionResult("$result [${elapsed}ms]")
+                    val parts = result.split("|")
+                    // A MÁGICA DO FILTRO: Só envia se tiver texto real após a barra
+                    if (parts.size >= 2 && parts[1].trim().isNotEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            onTranscriptionResult("$result [Tempo: ${tempoGasto}ms]")
+                        }
                     }
                 }
             }
