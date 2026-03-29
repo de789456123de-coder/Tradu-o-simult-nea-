@@ -3,13 +3,17 @@ package com.seuprojeto.translator
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.IOException
 import kotlin.coroutines.resume
 
-class GeminiManager() {
-    private val client = OkHttpClient()
+class GeminiManager {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
     private val apiKey = "AIzaSyAVhnSi2UjE0VQ7zh56FBIT5ScLvhvUMNo"
     private val apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
 
@@ -17,20 +21,19 @@ class GeminiManager() {
         text: String,
         sourceLang: String,
         targetLang: String,
-        context: String
+        contextInstruction: String
     ): String {
-        return suspendCancellableCoroutine { continuation ->
-            val prompt = """
-                Atue como um tradutor especialista no contexto: $context.
-                Traduza a seguinte frase de $sourceLang para $targetLang.
-                Retorne APENAS a tradução, sem explicações.
-                Frase: "$text"
-            """.trimIndent()
+        return suspendCancellableCoroutine { cont ->
+            val prompt = "Você é um tradutor especialista. $contextInstruction\n" +
+                "Traduza de $sourceLang para $targetLang. Retorne APENAS a tradução, sem explicações.\n" +
+                "Frase: \"$text\""
 
             val json = JSONObject().apply {
-                put("contents", JSONObject().apply {
-                    put("parts", JSONObject().apply {
-                        put("text", prompt)
+                put("contents", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().apply { put("text", prompt) })
+                        })
                     })
                 })
             }
@@ -42,22 +45,21 @@ class GeminiManager() {
 
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    continuation.resume("Erro de conexão")
+                    cont.resume("Erro: ${e.message}")
                 }
-
                 override fun onResponse(call: Call, response: Response) {
-                    val body = response.body?.string()
                     try {
-                        val resJson = JSONObject(body ?: "")
-                        val translated = resJson.getJSONArray("candidates")
+                        val body = response.body?.string() ?: ""
+                        val translated = JSONObject(body)
+                            .getJSONArray("candidates")
                             .getJSONObject(0)
                             .getJSONObject("content")
                             .getJSONArray("parts")
                             .getJSONObject(0)
                             .getString("text")
-                        continuation.resume(translated.trim())
+                        cont.resume(translated.trim())
                     } catch (e: Exception) {
-                        continuation.resume("Erro ao processar tradução")
+                        cont.resume("Erro: ${e.message}")
                     }
                 }
             })
