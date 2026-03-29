@@ -6,7 +6,6 @@ import java.io.File
 import java.io.FileOutputStream
 
 class WhisperManager(private val context: Context) {
-
     companion object {
         private const val TAG = "WhisperManager"
     }
@@ -30,7 +29,7 @@ class WhisperManager(private val context: Context) {
                     }
                 }
             }
-
+            
             onStatusUpdate?.invoke("🔄 Carregando Whisper JNI...")
             whisperLib = WhisperLib()
             contextPtr = whisperLib!!.initContext(modelFile.absolutePath)
@@ -39,51 +38,40 @@ class WhisperManager(private val context: Context) {
                 onStatusUpdate?.invoke("❌ Falha ao carregar modelo")
                 return false
             }
-
+            
             onStatusUpdate?.invoke("✅ Whisper JNI pronto!")
-            Log.d(TAG, "Whisper OK ptr=$contextPtr")
             true
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "JNI erro: ${e.message}")
-            onStatusUpdate?.invoke("❌ JNI: ${e.message}")
-            false
         } catch (e: Exception) {
-            Log.e(TAG, "Init erro: ${e.message}")
             onStatusUpdate?.invoke("❌ Erro: ${e.message}")
             false
         }
     }
 
     fun startListening() {
-        if (whisperLib == null || contextPtr == 0L) {
-            onStatusUpdate?.invoke("❌ Whisper não inicializado")
-            return
-        }
+        if (whisperLib == null || contextPtr == 0L) return
 
         captureManager = AudioCaptureManager(whisperLib!!, contextPtr)
         onListeningState?.invoke(true)
 
-        captureManager?.startRecordingAndTranscribing { result ->
-            Log.d(TAG, "Resultado: $result")
-
-            // Remove o [tempo] do resultado
-            val clean = result.substringBeforeLast("[").trim()
-
-            if (clean.contains("|") && !clean.startsWith("error")) {
-                val parts = clean.split("|", limit = 2)
-                val lang = parts[0].trim()
-                val text = parts[1].trim()
-                if (text.isNotBlank()) {
-                    onTranscription?.invoke(text, lang)
-                    onStatusUpdate?.invoke("🎙 Ouvindo (Whisper)...")
+        captureManager?.startRecordingAndTranscribing(
+            onVolumeUpdate = { volume ->
+                // AQUI É A MÁGICA: Joga o número do volume na barra de status da sua tela
+                onStatusUpdate?.invoke("🎤 Mic Vol: $volume")
+            },
+            onTranscriptionResult = { result ->
+                val clean = result.substringBeforeLast("[").trim()
+                if (clean.contains("|") && !clean.startsWith("error")) {
+                    val parts = clean.split("|", limit = 2)
+                    if (parts[1].trim().isNotBlank()) {
+                        onTranscription?.invoke(parts[1].trim(), parts[0].trim())
+                    }
                 }
             }
-        }
+        )
     }
 
     fun stopListening() {
         captureManager?.stopRecording()
-        captureManager = null
         onListeningState?.invoke(false)
     }
 

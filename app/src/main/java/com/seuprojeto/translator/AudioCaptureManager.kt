@@ -20,7 +20,10 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
     private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat) * 2
 
     @SuppressLint("MissingPermission")
-    fun startRecordingAndTranscribing(onTranscriptionResult: (String) -> Unit) {
+    fun startRecordingAndTranscribing(
+        onVolumeUpdate: (Int) -> Unit, // <--- NOVA FUNÇÃO PARA ENVIAR O VOLUME
+        onTranscriptionResult: (String) -> Unit
+    ) {
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
             sampleRate, channelConfig, audioFormat, bufferSize
@@ -41,11 +44,10 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
             var isSpeaking = false
             var silenceMs = 0
             val MAX_SILENCE_MS = 800
-            
-            // 1. AUMENTAMOS A RÉGUA: Agora precisa falar alto para ele começar a gravar
-            val MIN_VOICE_ENERGY = 2500.0 
+            val MIN_VOICE_ENERGY = 2500.0 // O valor que vamos calibrar!
 
             val speechBuffer = mutableListOf<Float>()
+            var loopCount = 0
 
             while (isRecording) {
                 val readSize = audioRecord?.read(shortBuffer, 0, chunkSamples) ?: 0
@@ -55,6 +57,14 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                         energy += (shortBuffer[i].toInt() * shortBuffer[i].toInt()).toDouble()
                     }
                     energy = sqrt(energy / readSize)
+
+                    // Manda o número para a tela a cada 300ms (para não travar a UI)
+                    loopCount++
+                    if (loopCount % 3 == 0) {
+                        withContext(Dispatchers.Main) {
+                            onVolumeUpdate(energy.toInt())
+                        }
+                    }
 
                     if (energy > MIN_VOICE_ENERGY) {
                         isSpeaking = true
@@ -69,17 +79,11 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                         }
                     }
 
-                    val reachedSilence = isSpeaking && silenceMs >= MAX_SILENCE_MS
-                    // 2. A GUILHOTINA: Bateu 5 segundos de gravação (80000 samples)? Corta e traduz na hora.
-                    val reachedMaxLength = isSpeaking && speechBuffer.size >= (16000 * 5)
-
-                    if (reachedSilence || reachedMaxLength) {
+                    if (isSpeaking && silenceMs >= MAX_SILENCE_MS) {
                         isSpeaking = false 
                         
-                        // Mínimo de ~0.7 segundos para não tentar traduzir uma tosse
                         if (speechBuffer.size > 12000) { 
                             val floatArrayToSend = speechBuffer.toFloatArray()
-                            
                             val startTime = System.currentTimeMillis()
                             val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
                             val elapsed = System.currentTimeMillis() - startTime
@@ -95,13 +99,11 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                                     !lower.contains("thank you for") &&
                                     !lower.contains("transcribed by")) {
                                     withContext(Dispatchers.Main) {
-                                        // Forçando a exibição do tempo para debug
                                         onTranscriptionResult("$result [${elapsed}ms]")
                                     }
                                 }
                             }
                         }
-                        
                         speechBuffer.clear()
                         silenceMs = 0
                     }
