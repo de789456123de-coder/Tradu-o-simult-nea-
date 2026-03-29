@@ -22,6 +22,15 @@ class TranslationManager(private val apiKey: String) {
             "fr" -> TranslateLanguage.FRENCH
             "de" -> TranslateLanguage.GERMAN
             "it" -> TranslateLanguage.ITALIAN
+            "nl" -> TranslateLanguage.DUTCH
+            "he" -> TranslateLanguage.HEBREW
+            "ja" -> TranslateLanguage.JAPANESE
+            "zh" -> TranslateLanguage.CHINESE
+            "ko" -> TranslateLanguage.KOREAN
+            "ru" -> TranslateLanguage.RUSSIAN
+            "ar" -> TranslateLanguage.ARABIC
+            "hi" -> TranslateLanguage.HINDI
+            "pl" -> TranslateLanguage.POLISH
             else -> TranslateLanguage.ENGLISH
         }
     }
@@ -30,26 +39,18 @@ class TranslationManager(private val apiKey: String) {
         val src = getMLKitLanguage(sourceLang)
         val tgt = getMLKitLanguage(targetLang)
         val key = "${src}_${tgt}"
-
         if (translators.containsKey(key)) return true
 
         val options = TranslatorOptions.Builder()
             .setSourceLanguage(src)
             .setTargetLanguage(tgt)
             .build()
-        
         val translator = Translation.getClient(options)
-        
-        // CORREÇÃO: Usando Callbacks nativos do Android em vez do .await()
-        return suspendCancellableCoroutine { continuation ->
+
+        return suspendCancellableCoroutine { cont ->
             translator.downloadModelIfNeeded(conditions)
-                .addOnSuccessListener {
-                    translators[key] = translator
-                    continuation.resume(true)
-                }
-                .addOnFailureListener {
-                    continuation.resume(false)
-                }
+                .addOnSuccessListener { translators[key] = translator; cont.resume(true) }
+                .addOnFailureListener { cont.resume(false) }
         }
     }
 
@@ -62,19 +63,12 @@ class TranslationManager(private val apiKey: String) {
         val src = getMLKitLanguage(sourceLang)
         val tgt = getMLKitLanguage(targetLang)
         val key = "${src}_${tgt}"
+        val translator = translators[key] ?: return text
 
-        val translator = translators[key]
-        if (translator == null) return "Erro: Modelo não baixado."
-
-        // CORREÇÃO: Usando Callbacks nativos do Android em vez do .await()
-        return suspendCancellableCoroutine { continuation ->
+        return suspendCancellableCoroutine { cont ->
             translator.translate(text)
-                .addOnSuccessListener { translatedText ->
-                    continuation.resume(translatedText)
-                }
-                .addOnFailureListener { e ->
-                    continuation.resume("Erro de tradução: ${e.message}")
-                }
+                .addOnSuccessListener { cont.resume(it) }
+                .addOnFailureListener { cont.resume(text) }
         }
     }
 
@@ -85,39 +79,30 @@ class TranslationManager(private val apiKey: String) {
         lastLang: String,
         context: ContextManager.ConversationContext
     ): String {
-        return suspendCancellableCoroutine { continuation ->
-            val languageIdentifier = LanguageIdentification.getClient()
-            
-            languageIdentifier.identifyPossibleLanguages(text)
-                .addOnSuccessListener { identifiedLanguages ->
-                    var leftConfidence = 0.0f
-                    var rightConfidence = 0.0f
-                    
-                    val shortLeft = leftLang.take(2).lowercase()
+        return suspendCancellableCoroutine { cont ->
+            val identifier = LanguageIdentification.getClient()
+            identifier.identifyPossibleLanguages(text)
+                .addOnSuccessListener { languages ->
+                    var leftConf = 0.0f
+                    var rightConf = 0.0f
+                    val shortLeft  = leftLang.take(2).lowercase()
                     val shortRight = rightLang.take(2).lowercase()
 
-                    AppLogger.log("[ML Kit] Analisando probabilidades para o texto: '$text'")
-
-                    for (language in identifiedLanguages) {
-                        if (language.languageTag == shortLeft) leftConfidence = language.confidence
-                        if (language.languageTag == shortRight) rightConfidence = language.confidence
-                        AppLogger.log("[ML Kit] Idioma: ${language.languageTag} | Probabilidade: ${language.confidence}")
+                    for (lang in languages) {
+                        if (lang.languageTag == shortLeft)  leftConf  = lang.confidence
+                        if (lang.languageTag == shortRight) rightConf = lang.confidence
                     }
 
-                    val detected = if (leftConfidence > 0.70f) {
-                        AppLogger.log("[ML Kit] Decisão: Bateu $leftConfidence (> 0.70) -> É $leftLang!")
-                        leftLang
-                    } else if (rightConfidence > leftConfidence) {
-                        AppLogger.log("[ML Kit] Decisão: Menor que 0.70, jogando para $rightLang!")
-                        rightLang
-                    } else {
-                        if (leftConfidence > 0) leftLang else rightLang
+                    val detected = when {
+                        leftConf  > 0.70f -> leftLang
+                        rightConf > leftConf -> rightLang
+                        leftConf  > 0f -> leftLang
+                        else -> if (lastLang.isNotEmpty()) lastLang else leftLang
                     }
-
-                    continuation.resume(detected)
+                    cont.resume(detected)
                 }
                 .addOnFailureListener {
-                    continuation.resume(if (lastLang.isNotEmpty()) lastLang else leftLang)
+                    cont.resume(if (lastLang.isNotEmpty()) lastLang else leftLang)
                 }
         }
     }
