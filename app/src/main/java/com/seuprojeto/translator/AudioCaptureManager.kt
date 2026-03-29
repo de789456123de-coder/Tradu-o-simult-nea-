@@ -21,7 +21,7 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
 
     @SuppressLint("MissingPermission")
     fun startRecordingAndTranscribing(
-        onVolumeUpdate: (Int) -> Unit, // <--- NOVA FUNÇÃO PARA ENVIAR O VOLUME
+        onVolumeUpdate: (Int) -> Unit,
         onTranscriptionResult: (String) -> Unit
     ) {
         audioRecord = AudioRecord(
@@ -44,7 +44,9 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
             var isSpeaking = false
             var silenceMs = 0
             val MAX_SILENCE_MS = 800
-            val MIN_VOICE_ENERGY = 2500.0 // O valor que vamos calibrar!
+            
+            // AQUI ESTÁ A MÁGICA CALIBRADA PELO SEU VÍDEO!
+            val MIN_VOICE_ENERGY = 1000.0 
 
             val speechBuffer = mutableListOf<Float>()
             var loopCount = 0
@@ -58,7 +60,6 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                     }
                     energy = sqrt(energy / readSize)
 
-                    // Manda o número para a tela a cada 300ms (para não travar a UI)
                     loopCount++
                     if (loopCount % 3 == 0) {
                         withContext(Dispatchers.Main) {
@@ -82,7 +83,8 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                     if (isSpeaking && silenceMs >= MAX_SILENCE_MS) {
                         isSpeaking = false 
                         
-                        if (speechBuffer.size > 12000) { 
+                        // Agora só manda se tiver gravado pelo menos meio segundo de voz real
+                        if (speechBuffer.size > 8000) { 
                             val floatArrayToSend = speechBuffer.toFloatArray()
                             val startTime = System.currentTimeMillis()
                             val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
