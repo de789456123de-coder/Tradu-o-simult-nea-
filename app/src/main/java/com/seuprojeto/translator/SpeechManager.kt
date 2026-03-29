@@ -24,15 +24,11 @@ class SpeechManager(private val context: Context) {
     private fun createRecognizer() {
         recognizer = SpeechRecognizer.createSpeechRecognizer(context)
         recognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                onListeningState?.invoke(true)
-            }
+            override fun onReadyForSpeech(params: Bundle?) { onListeningState?.invoke(true) }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {
-                onListeningState?.invoke(false)
-            }
+            override fun onEndOfSpeech() { onListeningState?.invoke(false) }
             override fun onError(error: Int) {
                 isListening = false
                 onListeningState?.invoke(false)
@@ -48,21 +44,16 @@ class SpeechManager(private val context: Context) {
                 onListeningState?.invoke(false)
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val text = matches?.firstOrNull() ?: return
-                if (text.length > 1) {
-                    onSpeechResult?.invoke(text)
-                }
+                if (text.length > 1) onSpeechResult?.invoke(text)
             }
             override fun onPartialResults(partialResults: Bundle?) {
                 val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
-                if (partial.length > 1) {
-                    onPartialSpeech?.invoke(partial)
-                }
+                if (partial.length > 1) onPartialSpeech?.invoke(partial)
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
     }
 
-    // Modo Walkie-Talkie (Foco 100% num idioma)
     fun startListening(langCode: String) {
         if (isListening) stopListening()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -70,13 +61,15 @@ class SpeechManager(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, langCode)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // Filtros de Ruído para Modo Manual
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
         }
         isListening = true
         try { recognizer?.startListening(intent) }
         catch (e: Exception) { isListening = false; onError?.invoke("Erro ao abrir microfone") }
     }
 
-    // Modo Contínuo (Tenta escutar ambos)
     fun startListeningContinuous(primaryLang: String, secondaryLang: String) {
         if (isListening) stopListening()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -85,6 +78,10 @@ class SpeechManager(private val context: Context) {
             putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf(primaryLang, secondaryLang))
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // FILTROS AVANÇADOS DE RUÍDO (Obriga a ignorar ruídos curtos)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L) // Demora mais para cortar
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800L) // Ignora ruídos rápidos (ex: tosses)
         }
         isListening = true
         try { recognizer?.startListening(intent) }
