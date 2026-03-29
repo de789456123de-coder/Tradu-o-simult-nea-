@@ -67,31 +67,39 @@ class AudioCaptureManager(private val whisperLib: WhisperLib, private val contex
                         }
                     }
 
-                    if (isSpeaking && silenceMs >= MAX_SILENCE_MS && speechBuffer.size > 16000) {
-                        isSpeaking = false
-                        val floatArrayToSend = speechBuffer.toFloatArray()
-                        speechBuffer.clear()
+                    // --- AQUI ESTÁ A CORREÇÃO DO MEMORY LEAK ---
+                    if (isSpeaking && silenceMs >= MAX_SILENCE_MS) {
+                        isSpeaking = false // Encerra o turno de fala imediatamente
+                        
+                        // Só manda pro Whisper se a gravação for maior que 1 segundo (16000 samples)
+                        if (speechBuffer.size > 16000) {
+                            val floatArrayToSend = speechBuffer.toFloatArray()
+                            
+                            val startTime = System.currentTimeMillis()
+                            val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
+                            val elapsed = System.currentTimeMillis() - startTime
 
-                        val startTime = System.currentTimeMillis()
-                        val result = whisperLib.transcribeData(contextPtr, floatArrayToSend)
-                        val elapsed = System.currentTimeMillis() - startTime
-
-                        val parts = result.split("|")
-                        if (parts.size >= 2) {
-                            val text = parts[1].trim()
-                            val lower = text.lowercase()
-                            if (text.isNotBlank() &&
-                                !lower.contains("subtitles by") &&
-                                !lower.contains("amara.org") &&
-                                !lower.contains("www.") &&
-                                !lower.contains("thank you for watching") &&
-                                !lower.contains("transcribed by")) {
-                                withContext(Dispatchers.Main) {
-                                    onTranscriptionResult("$result [${elapsed}ms]")
+                            val parts = result.split("|")
+                            if (parts.size >= 2) {
+                                val text = parts[1].trim()
+                                val lower = text.lowercase()
+                                if (text.isNotBlank() &&
+                                    !lower.contains("subtitles by") &&
+                                    !lower.contains("amara.org") &&
+                                    !lower.contains("www.") &&
+                                    !lower.contains("thank you for watching") &&
+                                    !lower.contains("transcribed by")) {
+                                    withContext(Dispatchers.Main) {
+                                        onTranscriptionResult("$result [${elapsed}ms]")
+                                    }
                                 }
                             }
                         }
+                        
+                        // Limpa o buffer obrigatoriamente para não estourar a memória RAM!
+                        speechBuffer.clear()
                     }
+                    // -------------------------------------------
                 }
             }
         }
