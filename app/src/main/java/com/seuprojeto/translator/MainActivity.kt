@@ -132,6 +132,7 @@ class MainActivity : AppCompatActivity() {
         speechManager.onError = { msg ->
             runOnUiThread { 
                 if (isContinuousMode) {
+                    if (msg != "Não entendi" && msg != "Silêncio...") setStatus(msg)
                     // LOOP BLINDADO: Se der "Não entendi" ou "Silêncio", ele finge que nada aconteceu e religa a escuta!
                     val ptCode = getLangCodeForSpeech(leftLangCode)
                     val enCode = getLangCodeForSpeech(rightLangCode)
@@ -160,6 +161,7 @@ class MainActivity : AppCompatActivity() {
                 setStatus("🔍 Analisando...")
 
                 val detectedLang = if (isContinuousMode) {
+                    if (msg != "Não entendi" && msg != "Silêncio...") setStatus(msg)
                     translationManager.detectLanguageSmart(text, leftLangCode, rightLangCode, lastDetectedLang, currentContext)
                 } else {
                     if (isLeftTalking) leftLangCode else rightLangCode
@@ -189,6 +191,7 @@ class MainActivity : AppCompatActivity() {
                     delay((translated.length * 85L) + 1200L)
                     
                     if (isContinuousMode) {
+                    if (msg != "Não entendi" && msg != "Silêncio...") setStatus(msg)
                         val ptCode = getLangCodeForSpeech(leftLangCode)
                         val enCode = getLangCodeForSpeech(rightLangCode)
                         speechManager.startListeningContinuous(ptCode, enCode)
