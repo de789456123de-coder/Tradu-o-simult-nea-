@@ -1,7 +1,6 @@
 package com.seuprojeto.translator
 
 import android.content.Context
-import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 
@@ -13,6 +12,9 @@ class WhisperManager(private val context: Context) {
     private var whisperLib: WhisperLib? = null
     private var contextPtr: Long = 0
     private var captureManager: AudioCaptureManager? = null
+    
+    // A TRAVA DE SEGURANÇA: Garante que só exista 1 microfone ligado por vez!
+    private var isListeningActive = false
 
     var onTranscription: ((text: String, language: String) -> Unit)? = null
     var onListeningState: ((active: Boolean) -> Unit)? = null
@@ -49,13 +51,19 @@ class WhisperManager(private val context: Context) {
 
     fun startListening() {
         if (whisperLib == null || contextPtr == 0L) return
+        
+        // Se já está escutando, ignora o comando e não cria clones!
+        if (isListeningActive) {
+            AppLogger.log("Aviso: Ignorando startListening(), microfone já estava ativo.")
+            return 
+        }
 
+        isListeningActive = true
         captureManager = AudioCaptureManager(whisperLib!!, contextPtr)
         onListeningState?.invoke(true)
 
         captureManager?.startRecordingAndTranscribing(
             onVolumeUpdate = { volume ->
-                // AQUI É A MÁGICA: Joga o número do volume na barra de status da sua tela
                 onStatusUpdate?.invoke("🎤 Mic Vol: $volume")
             },
             onTranscriptionResult = { result ->
@@ -71,8 +79,13 @@ class WhisperManager(private val context: Context) {
     }
 
     fun stopListening() {
+        if (!isListeningActive) return // Só para se realmente estiver rodando
+        
+        isListeningActive = false
         captureManager?.stopRecording()
+        captureManager = null // Destrói o capturador velho
         onListeningState?.invoke(false)
+        AppLogger.log("Microfone Desligado e destruído com sucesso.")
     }
 
     fun release() {
