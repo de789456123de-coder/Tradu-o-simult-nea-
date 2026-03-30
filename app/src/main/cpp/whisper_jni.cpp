@@ -33,17 +33,16 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
     jfloat *audio_elements = env->GetFloatArrayElements(audio_data, nullptr);
 
     whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    wparams.language       = "auto";
-    wparams.print_progress = false;
-    wparams.print_special  = false;
-    wparams.print_realtime = false;
-    wparams.n_threads      = 4;
-
-    // Filtros anti-alucinação
-    wparams.no_context     = true;
-    wparams.single_segment = true;
-    wparams.entropy_thold  = 2.8f;
-    wparams.logprob_thold  = -1.0f;
+    wparams.language        = "auto";
+    wparams.print_progress  = false;
+    wparams.print_special   = false;
+    wparams.print_realtime  = false;
+    wparams.n_threads       = 4;
+    wparams.no_context      = true;
+    wparams.single_segment  = true;
+    wparams.entropy_thold   = 2.8f;
+    wparams.logprob_thold   = -1.0f;
+    wparams.temperature_inc = 0.0f;
 
     LOGI("Transcrevendo %d samples...", audio_len);
     int ret = whisper_full(ctx, wparams, audio_elements, audio_len);
@@ -51,7 +50,7 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
 
     if (ret != 0) {
         LOGE("Falha whisper_full: %d", ret);
-        return env->NewStringUTF("error|Falha na transcrição");
+        return env->NewStringUTF("error|Falha na transcricao");
     }
 
     const int lang_id = whisper_full_lang_id(ctx);
@@ -63,7 +62,7 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
         result_text += whisper_full_get_segment_text(ctx, i);
     }
 
-    // Remove espaço inicial comum no Whisper
+    if (!result_text.empty() && result_text[0] == ' ') {
         result_text = result_text.substr(1);
     }
 
