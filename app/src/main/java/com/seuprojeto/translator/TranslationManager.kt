@@ -45,4 +45,5 @@ class TranslationManager {
                 .addOnFailureListener { cont.resume(if (last.isNotEmpty()) last else left) }
         }
     }
+    fun release() { translators.values.forEach { it?.close() }; translators.clear() }
 }
