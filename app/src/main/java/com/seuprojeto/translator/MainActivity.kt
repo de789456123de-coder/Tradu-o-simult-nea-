@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
             setStatus("✨ ${currentContext.emoji} Pronto")
         }
 
-        findViewById<Button>(R.id.btn_listen).setOnClickListener {
+        findViewById<View>(android.R.id.content).findViewWithText<Button>("INICIAR CONVERSA") ?: findViewById(R.id.btn_listen).setOnClickListener {
             if (!isContinuous) {
                 isContinuous = true
                 (it as Button).text = "⏹ Parar"
