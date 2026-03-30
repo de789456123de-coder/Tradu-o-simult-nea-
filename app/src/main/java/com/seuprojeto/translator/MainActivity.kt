@@ -44,15 +44,17 @@ class MainActivity : AppCompatActivity() {
             setStatus("✨ ${currentContext.emoji} Pronto")
         }
 
-        findViewById<View>(android.R.id.content).findViewWithText<Button>("INICIAR CONVERSA") ?: findViewById(R.id.btn_listen).setOnClickListener {
+        // Blindagem com Safe Call (?.): Se o botão não existir no layout, não fecha o app.
+        findViewById<Button>(R.id.btn_listen)?.setOnClickListener {
+            val btn = it as Button
             if (!isContinuous) {
                 isContinuous = true
-                (it as Button).text = "⏹ Parar"
+                btn.text = "⏹ Parar"
                 speechManager.startListeningContinuous(if(leftLangCode=="pt")"pt-BR" else "en-US", if(rightLangCode=="en")"en-US" else "pt-BR")
             } else {
                 isContinuous = false
                 speechManager.stopListening()
-                (it as Button).text = "▶ Iniciar"
+                btn.text = "▶ Iniciar"
             }
         }
 
@@ -67,8 +69,9 @@ class MainActivity : AppCompatActivity() {
                 if (res.contains("Erro")) res = translationManager.translate(text, detected, target, currentContext)
 
                 runOnUiThread {
-                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_left else R.id.tv_right).text = text
-                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_right else R.id.tv_left).text = res
+                    // Mais blindagem: atualiza os textos apenas se os TextViews existirem na tela
+                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_left else R.id.tv_right)?.text = text
+                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_right else R.id.tv_left)?.text = res
                 }
 
                 if (isAudioReady) {
@@ -82,7 +85,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setStatus(m: String) { runOnUiThread { findViewById<TextView>(R.id.tv_status).text = m } }
+    private fun setStatus(m: String) { 
+        runOnUiThread { findViewById<TextView>(R.id.tv_status)?.text = m } 
+    }
     
     override fun onDestroy() {
         super.onDestroy()
