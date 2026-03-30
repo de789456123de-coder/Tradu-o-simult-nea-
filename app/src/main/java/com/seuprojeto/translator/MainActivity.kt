@@ -9,27 +9,38 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var audioManager: AudioChannelManager
     private lateinit var speechManager: SpeechManager
     private lateinit var translationManager: TranslationManager
     private lateinit var geminiManager: GeminiManager
+    
+    private var isAudioReady = false
     private var isContinuous = false
-    private var currentContext = ContextManager.ConversationContext.GENERAL
+    private var lastDetectedLang = ""
+    private var currentContext = ContextManager.ConversationContext.GERAL
+    private var leftLangCode = "pt"
+    private var rightLangCode = "en"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val contextName = intent.getStringExtra("SELECTED_CONTEXT") ?: "GENERAL"
-        currentContext = try { ContextManager.ConversationContext.valueOf(contextName) } catch(e: Exception) { ContextManager.ConversationContext.GENERAL }
+        leftLangCode = intent.getStringExtra("LEFT_LANG_CODE") ?: "pt"
+        rightLangCode = intent.getStringExtra("RIGHT_LANG_CODE") ?: "en"
+        val contextName = intent.getStringExtra("SELECTED_CONTEXT") ?: "GERAL"
+        currentContext = try { ContextManager.ConversationContext.valueOf(contextName) } catch(e: Exception) { ContextManager.ConversationContext.GERAL }
 
         speechManager = SpeechManager(this)
         translationManager = TranslationManager()
         geminiManager = GeminiManager()
+        
+        audioManager = AudioChannelManager(this)
+        audioManager.init(leftLangCode, rightLangCode) { runOnUiThread { isAudioReady = true } }
 
         lifecycleScope.launch {
             setStatus("📡 Verificando sistemas...")
-            translationManager.prepareOfflineModel("pt", "en")
-            translationManager.prepareOfflineModel("en", "pt")
+            translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
+            translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
             setStatus("✨ ${currentContext.emoji} Pronto")
         }
 
@@ -37,7 +48,7 @@ class MainActivity : AppCompatActivity() {
             if (!isContinuous) {
                 isContinuous = true
                 (it as Button).text = "⏹ Parar"
-                speechManager.startListeningContinuous("pt-BR", "en-US")
+                speechManager.startListeningContinuous(if(leftLangCode=="pt")"pt-BR" else "en-US", if(rightLangCode=="en")"en-US" else "pt-BR")
             } else {
                 isContinuous = false
                 speechManager.stopListening()
@@ -48,23 +59,35 @@ class MainActivity : AppCompatActivity() {
         speechManager.onSpeechResult = { text ->
             lifecycleScope.launch {
                 setStatus("🔍 Traduzindo...")
-                val detected = translationManager.detectLanguageSmart(text, "pt", "en", "", currentContext)
-                val target = if (detected == "pt") "en" else "pt"
+                val detected = translationManager.detectLanguageSmart(text, leftLangCode, rightLangCode, lastDetectedLang, currentContext)
+                lastDetectedLang = detected
+                val target = if (detected == leftLangCode) rightLangCode else leftLangCode
                 
                 var res = geminiManager.translateWithContext(text, detected, target, currentContext.instruction)
                 if (res.contains("Erro")) res = translationManager.translate(text, detected, target, currentContext)
 
-                findViewById<TextView>(if (detected == "pt") R.id.tv_left else R.id.tv_right).text = text
-                findViewById<TextView>(if (detected == "pt") R.id.tv_right else R.id.tv_left).text = res
-                
-                setStatus("🎙 Ouvindo...")
-                if (isContinuous) {
-                    delay(2000)
-                    speechManager.startListeningContinuous("pt-BR", "en-US")
+                runOnUiThread {
+                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_left else R.id.tv_right).text = text
+                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_right else R.id.tv_left).text = res
                 }
+
+                if (isAudioReady) {
+                    speechManager.stopListening()
+                    if (detected == leftLangCode) audioManager.speakRight(res) else audioManager.speakLeft(res)
+                    delay((res.length * 85L) + 1200L)
+                    if (isContinuous) speechManager.startListeningContinuous(if(leftLangCode=="pt")"pt-BR" else "en-US", if(rightLangCode=="en")"en-US" else "pt-BR")
+                }
+                setStatus("🎙 Ouvindo...")
             }
         }
     }
 
-    private fun setStatus(m: String) { findViewById<TextView>(R.id.tv_status).text = m }
+    private fun setStatus(m: String) { runOnUiThread { findViewById<TextView>(R.id.tv_status).text = m } }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        audioManager.release()
+        speechManager.release()
+        translationManager.release()
+    }
 }

@@ -8,6 +8,7 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 extern "C" {
+
 JNIEXPORT jlong JNICALL
 Java_com_seuprojeto_translator_WhisperLib_initContext(JNIEnv *env, jobject thiz, jstring model_path) {
     const char *path = env->GetStringUTFChars(model_path, nullptr);
@@ -38,12 +39,11 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
     wparams.print_realtime = false;
     wparams.n_threads      = 4;
 
-    // --- FILTROS BLINDADOS ---
+    // Filtros anti-alucinação
     wparams.no_context     = true;
     wparams.single_segment = true;
     wparams.entropy_thold  = 2.8f;
     wparams.logprob_thold  = -1.0f;
-    wparams.temperature_inc = 0.0f; // MATA O DELAY DE 20 SEGUNDOS
 
     LOGI("Transcrevendo %d samples...", audio_len);
     int ret = whisper_full(ctx, wparams, audio_elements, audio_len);
@@ -63,7 +63,7 @@ Java_com_seuprojeto_translator_WhisperLib_transcribeData(JNIEnv *env, jobject th
         result_text += whisper_full_get_segment_text(ctx, i);
     }
 
-    if (!result_text.empty() && result_text[0] == ' ') {
+    // Remove espaço inicial comum no Whisper
         result_text = result_text.substr(1);
     }
 
@@ -80,4 +80,5 @@ Java_com_seuprojeto_translator_WhisperLib_freeContext(JNIEnv *env, jobject thiz,
         LOGI("Whisper liberado");
     }
 }
+
 } // extern "C"
