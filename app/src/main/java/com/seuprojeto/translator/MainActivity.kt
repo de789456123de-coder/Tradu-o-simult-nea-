@@ -17,7 +17,7 @@ class MainActivity : AppCompatActivity() {
     private var isAudioReady = false
     private var isContinuous = false
     private var lastDetectedLang = ""
-    private var currentContext = ContextManager.ConversationContext.GERAL
+    private var currentContext = ContextManager.ConversationContext.GENERAL
     private var leftLangCode = "pt"
     private var rightLangCode = "en"
 
@@ -27,8 +27,8 @@ class MainActivity : AppCompatActivity() {
 
         leftLangCode = intent.getStringExtra("LEFT_LANG_CODE") ?: "pt"
         rightLangCode = intent.getStringExtra("RIGHT_LANG_CODE") ?: "en"
-        val contextName = intent.getStringExtra("SELECTED_CONTEXT") ?: "GERAL"
-        currentContext = try { ContextManager.ConversationContext.valueOf(contextName) } catch(e: Exception) { ContextManager.ConversationContext.GERAL }
+        val contextName = intent.getStringExtra("SELECTED_CONTEXT") ?: "GENERAL"
+        currentContext = try { ContextManager.ConversationContext.valueOf(contextName) } catch(e: Exception) { ContextManager.ConversationContext.GENERAL }
 
         speechManager = SpeechManager(this)
         translationManager = TranslationManager()
