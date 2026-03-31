@@ -1,94 +1,256 @@
 package com.seuprojeto.translator
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.View
+import android.view.animation.AnimationUtils
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+
     private lateinit var audioManager: AudioChannelManager
     private lateinit var speechManager: SpeechManager
     private lateinit var translationManager: TranslationManager
     private lateinit var geminiManager: GeminiManager
-    
+
     private var isAudioReady = false
-    private var isContinuous = false
+    private var modelsReady = false
+    private var isContinuousMode = false
+    private var isLeftTalking = true
     private var lastDetectedLang = ""
     private var currentContext = ContextManager.ConversationContext.GENERAL
+
     private var leftLangCode = "pt"
     private var rightLangCode = "en"
+    private var leftLangName = "Português"
+    private var rightLangName = "Inglês"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        leftLangCode = intent.getStringExtra("LEFT_LANG_CODE") ?: "pt"
+        leftLangCode  = intent.getStringExtra("LEFT_LANG_CODE")  ?: "pt"
         rightLangCode = intent.getStringExtra("RIGHT_LANG_CODE") ?: "en"
-        val contextName = intent.getStringExtra("SELECTED_CONTEXT") ?: "GENERAL"
-        currentContext = try { ContextManager.ConversationContext.valueOf(contextName) } catch(e: Exception) { ContextManager.ConversationContext.GENERAL }
+        leftLangName  = intent.getStringExtra("LEFT_LANG_NAME")  ?: "Português"
+        rightLangName = intent.getStringExtra("RIGHT_LANG_NAME") ?: "Inglês"
 
-        speechManager = SpeechManager(this)
+        currentContext = try {
+            ContextManager.ConversationContext.valueOf(
+                intent.getStringExtra("CONTEXT") ?: "GENERAL")
+        } catch (e: Exception) { ContextManager.ConversationContext.GENERAL }
+
+        updateLabels()
+        requestMicPermission()
+
         translationManager = TranslationManager()
         geminiManager = GeminiManager()
-        
         audioManager = AudioChannelManager(this)
-        audioManager.init(leftLangCode, rightLangCode) { runOnUiThread { isAudioReady = true } }
+        audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
+            onReady = { runOnUiThread { isAudioReady = true } })
+        speechManager = SpeechManager(this)
 
         lifecycleScope.launch {
-            setStatus("📡 Verificando sistemas...")
-            translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
-            translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
-            setStatus("✨ ${currentContext.emoji} Pronto")
+            setStatus("⬇️ Preparando offline...")
+            val ok1 = translationManager.prepareOfflineModel(leftLangCode, rightLangCode)
+            val ok2 = translationManager.prepareOfflineModel(rightLangCode, leftLangCode)
+            modelsReady = ok1 && ok2
+            setStatus("✅ ${currentContext.emoji} Pronto! Toque para falar.")
         }
 
-        // Blindagem com Safe Call (?.): Se o botão não existir no layout, não fecha o app.
-        findViewById<Button>(R.id.btn_listen)?.setOnClickListener {
-            val btn = it as Button
-            if (!isContinuous) {
-                isContinuous = true
-                btn.text = "⏹ Parar"
-                speechManager.startListeningContinuous(if(leftLangCode=="pt")"pt-BR" else "en-US", if(rightLangCode=="en")"en-US" else "pt-BR")
+        // === WALKIE-TALKIE: toca no card para falar ===
+        findViewById<CardView>(R.id.card_left).setOnClickListener {
+            if (!modelsReady) return@setOnClickListener
+            isLeftTalking = true
+            setActiveCard(left = true)
+            speechManager.startListening(getLangCode(leftLangCode))
+            setStatus("🎙 $leftLangName...")
+        }
+
+        findViewById<CardView>(R.id.card_right).setOnClickListener {
+            if (!modelsReady) return@setOnClickListener
+            isLeftTalking = false
+            setActiveCard(left = false)
+            speechManager.startListening(getLangCode(rightLangCode))
+            setStatus("🎙 $rightLangName...")
+        }
+
+        // === BOTÃO CONTÍNUO ===
+        findViewById<Button>(R.id.btn_listen).setOnClickListener {
+            if (!isContinuousMode) {
+                isContinuousMode = true
+                lastDetectedLang = ""
+                (it as Button).text = "⏹ Parar"
+                speechManager.startListeningContinuous(
+                    getLangCode(leftLangCode), getLangCode(rightLangCode))
+                setStatus("🎙 Ouvindo...")
             } else {
-                isContinuous = false
+                isContinuousMode = false
                 speechManager.stopListening()
-                btn.text = "▶ Iniciar"
+                (it as Button).text = "▶ Iniciar Conversa"
+                resetActiveCards()
+                setStatus("● Pausado")
+            }
+        }
+
+        speechManager.onPartialSpeech = { partial ->
+            runOnUiThread {
+                val tvId = if (isLeftTalking) R.id.tv_left else R.id.tv_right
+                findViewById<TextView>(tvId).text = "💬 $partial"
+            }
+        }
+
+        speechManager.onListeningState = { active ->
+            runOnUiThread { setMicIcon(active) }
+        }
+
+        speechManager.onError = { _ ->
+            runOnUiThread { resetActiveCards() }
+            if (isContinuousMode) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (isContinuousMode) speechManager.startListeningContinuous(
+                        getLangCode(leftLangCode), getLangCode(rightLangCode))
+                }, 600)
             }
         }
 
         speechManager.onSpeechResult = { text ->
             lifecycleScope.launch {
-                setStatus("🔍 Traduzindo...")
-                val detected = translationManager.detectLanguageSmart(text, leftLangCode, rightLangCode, lastDetectedLang, currentContext)
-                lastDetectedLang = detected
-                val target = if (detected == leftLangCode) rightLangCode else leftLangCode
-                
-                var res = geminiManager.translateWithContext(text, detected, target, currentContext.instruction)
-                if (res.contains("Erro")) res = translationManager.translate(text, detected, target, currentContext)
+                // Detecta idioma
+                val detectedLang = if (isContinuousMode) {
+                    translationManager.detectLanguageSmart(
+                        text, leftLangCode, rightLangCode, lastDetectedLang, currentContext)
+                } else {
+                    if (isLeftTalking) leftLangCode else rightLangCode
+                }
+                lastDetectedLang = detectedLang
+
+                val sourceCode = detectedLang
+                val targetCode = if (detectedLang == leftLangCode) rightLangCode else leftLangCode
+                val sourceTvId = if (detectedLang == leftLangCode) R.id.tv_left else R.id.tv_right
+                val targetTvId = if (detectedLang == leftLangCode) R.id.tv_right else R.id.tv_left
 
                 runOnUiThread {
-                    // Mais blindagem: atualiza os textos apenas se os TextViews existirem na tela
-                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_left else R.id.tv_right)?.text = text
-                    findViewById<TextView>(if (detected == leftLangCode) R.id.tv_right else R.id.tv_left)?.text = res
+                    setActiveCard(left = detectedLang == leftLangCode)
+                    animateText(findViewById(sourceTvId), text)
                 }
+
+                // Tenta Gemini primeiro, fallback ML Kit
+                setStatus("✨ ${currentContext.emoji} Traduzindo...")
+                var translated = geminiManager.translateWithContext(
+                    text, sourceCode, targetCode, currentContext.instruction)
+
+                if (translated.startsWith("Erro")) {
+                    setStatus("🔄 Offline...")
+                    translated = translationManager.translate(text, sourceCode, targetCode, currentContext)
+                }
+
+                runOnUiThread { animateText(findViewById(targetTvId), translated) }
 
                 if (isAudioReady) {
                     speechManager.stopListening()
-                    if (detected == leftLangCode) audioManager.speakRight(res) else audioManager.speakLeft(res)
-                    delay((res.length * 85L) + 1200L)
-                    if (isContinuous) speechManager.startListeningContinuous(if(leftLangCode=="pt")"pt-BR" else "en-US", if(rightLangCode=="en")"en-US" else "pt-BR")
+                    if (detectedLang == leftLangCode) audioManager.speakRight(translated)
+                    else audioManager.speakLeft(translated)
+                    delay((translated.length * 80L) + 1000L)
                 }
-                setStatus("🎙 Ouvindo...")
+
+                runOnUiThread { resetActiveCards() }
+
+                if (isContinuousMode) {
+                    speechManager.startListeningContinuous(
+                        getLangCode(leftLangCode), getLangCode(rightLangCode))
+                    setStatus("🎙 Ouvindo...")
+                } else {
+                    setStatus("✅ ${currentContext.emoji} Traduzido. Toque para falar.")
+                }
             }
+        }
+
+        findViewById<ImageButton>(R.id.btn_swap).setOnClickListener {
+            speechManager.stopListening()
+            isContinuousMode = false
+            val tmpCode = leftLangCode; val tmpName = leftLangName
+            leftLangCode = rightLangCode; leftLangName = rightLangName
+            rightLangCode = tmpCode; rightLangName = tmpName
+            updateLabels()
+            audioManager.init(leftLang = leftLangCode, rightLang = rightLangCode,
+                onReady = { runOnUiThread { isAudioReady = true } })
+            (findViewById<Button>(R.id.btn_listen)).text = "▶ Iniciar Conversa"
+            setStatus("🔄 Trocado!")
         }
     }
 
-    private fun setStatus(m: String) { 
-        runOnUiThread { findViewById<TextView>(R.id.tv_status)?.text = m } 
+    private fun getLangCode(code: String) = when(code) {
+        "pt" -> "pt-BR"; "en" -> "en-US"; "es" -> "es-ES"
+        "fr" -> "fr-FR"; "de" -> "de-DE"; "it" -> "it-IT"
+        "nl" -> "nl-NL"; "he" -> "he-IL"; "ja" -> "ja-JP"
+        "zh" -> "zh-CN"; "ko" -> "ko-KR"; "ru" -> "ru-RU"
+        "ar" -> "ar-SA"; "hi" -> "hi-IN"
+        else -> "en-US"
     }
-    
+
+    private fun animateText(view: TextView, text: String) {
+        view.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_up))
+        view.text = text
+    }
+
+    private fun setActiveCard(left: Boolean) {
+        val pulse = AnimationUtils.loadAnimation(this, R.anim.pulse)
+        if (left) {
+            findViewById<CardView>(R.id.card_left).setCardBackgroundColor(0xFF1A1A3E.toInt())
+            findViewById<CardView>(R.id.card_right).setCardBackgroundColor(0xFF0F1A12.toInt())
+            findViewById<View>(R.id.indicator_left).apply { visibility = View.VISIBLE; startAnimation(pulse) }
+            findViewById<View>(R.id.indicator_right).apply { visibility = View.INVISIBLE; clearAnimation() }
+        } else {
+            findViewById<CardView>(R.id.card_right).setCardBackgroundColor(0xFF1A2E1A.toInt())
+            findViewById<CardView>(R.id.card_left).setCardBackgroundColor(0xFF12122A.toInt())
+            findViewById<View>(R.id.indicator_right).apply { visibility = View.VISIBLE; startAnimation(pulse) }
+            findViewById<View>(R.id.indicator_left).apply { visibility = View.INVISIBLE; clearAnimation() }
+        }
+    }
+
+    private fun resetActiveCards() {
+        findViewById<CardView>(R.id.card_left).setCardBackgroundColor(0xFF12122A.toInt())
+        findViewById<CardView>(R.id.card_right).setCardBackgroundColor(0xFF0F1A12.toInt())
+        findViewById<View>(R.id.indicator_left).apply { visibility = View.INVISIBLE; clearAnimation() }
+        findViewById<View>(R.id.indicator_right).apply { visibility = View.INVISIBLE; clearAnimation() }
+    }
+
+    private fun setMicIcon(active: Boolean) {
+        val icon = findViewById<TextView>(R.id.tv_mic_icon)
+        icon.text = if (active) "🎙" else "●"
+        icon.textSize = if (active) 14f else 10f
+    }
+
+    private fun updateLabels() {
+        runOnUiThread {
+            findViewById<TextView>(R.id.tv_left_label).text  = "🎧 $leftLangName"
+            findViewById<TextView>(R.id.tv_right_label).text = "🎧 $rightLangName"
+        }
+    }
+
+    private fun setStatus(msg: String) {
+        runOnUiThread { findViewById<TextView>(R.id.tv_status).text = msg }
+    }
+
+    private fun requestMicPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         audioManager.release()
