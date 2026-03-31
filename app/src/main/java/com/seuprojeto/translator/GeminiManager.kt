@@ -49,7 +49,7 @@ class GeminiManager {
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     Log.e("GeminiManager", "Falha de rede: ${e.message}")
-                    cont.resume("Erro: ${e.message}")
+                    cont.resume("Erro:rede:${e.message?.take(40)}")
                 }
 
                 override fun onResponse(call: Call, response: Response) {
@@ -79,7 +79,7 @@ class GeminiManager {
                         cont.resume(translated)
                     } catch (e: Exception) {
                         Log.e("GeminiManager", "Parse erro: ${e.message} | Body: ${bodyStr.take(200)}")
-                        cont.resume("Erro: parse")
+                        cont.resume("Erro:parse:${e.message?.take(40)}")
                     }
                 }
             })
