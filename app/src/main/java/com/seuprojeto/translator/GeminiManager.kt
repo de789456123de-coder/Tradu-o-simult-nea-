@@ -11,7 +11,7 @@ import kotlin.coroutines.resume
 
 class GeminiManager {
     private val client = OkHttpClient()
-    private val apiKey = "AIzaSyAVhnSi2UjE0VQ7zh56FBIT5ScLvhvUMNo"
+    private val apiKey = "AIzaSyBY2mrVzfmcVp7lsjXdmt7aCNiRaiKvysM"
     private val apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
 
     suspend fun translateWithContext(text: String, source: String, target: String, instruct: String): String {
