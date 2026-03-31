@@ -2,6 +2,7 @@ package com.seuprojeto.translator
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -30,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private var isContinuousMode = false
     private var isLeftTalking = true
     private var lastDetectedLang = ""
+    private var geminiEnabled = false  // OFF por padrão
     private var currentContext = ContextManager.ConversationContext.GENERAL
 
     private var leftLangCode = "pt"
@@ -69,7 +71,26 @@ class MainActivity : AppCompatActivity() {
             setStatus("✅ ${currentContext.emoji} Pronto! Toque para falar.")
         }
 
-        // === WALKIE-TALKIE: toca no card para falar ===
+        // === BOTÃO GEMINI ON/OFF ===
+        val btnGemini = findViewById<Button>(R.id.btn_gemini)
+        btnGemini?.apply {
+            text = "🤖 Gemini OFF"
+            setBackgroundColor(0xFF333333.toInt())
+            setOnClickListener {
+                geminiEnabled = !geminiEnabled
+                if (geminiEnabled) {
+                    text = "✨ Gemini ON"
+                    setBackgroundColor(0xFF7C4DFF.toInt())
+                    setStatus("✨ Gemini ativado — ${currentContext.emoji} ${currentContext.name}")
+                } else {
+                    text = "🤖 Gemini OFF"
+                    setBackgroundColor(0xFF333333.toInt())
+                    setStatus("🔄 Modo offline (ML Kit)")
+                }
+            }
+        }
+
+        // === WALKIE-TALKIE ===
         findViewById<CardView>(R.id.card_left).setOnClickListener {
             if (!modelsReady) return@setOnClickListener
             isLeftTalking = true
@@ -127,7 +148,6 @@ class MainActivity : AppCompatActivity() {
 
         speechManager.onSpeechResult = { text ->
             lifecycleScope.launch {
-                // Detecta idioma
                 val detectedLang = if (isContinuousMode) {
                     translationManager.detectLanguageSmart(
                         text, leftLangCode, rightLangCode, lastDetectedLang, currentContext)
@@ -146,13 +166,20 @@ class MainActivity : AppCompatActivity() {
                     animateText(findViewById(sourceTvId), text)
                 }
 
-                // Tenta Gemini primeiro, fallback ML Kit
-                setStatus("✨ ${currentContext.emoji} Traduzindo...")
-                var translated = geminiManager.translateWithContext(
-                    text, sourceCode, targetCode, currentContext.instruction)
-
-                if (translated.startsWith("Erro")) {
-                    setStatus("🔄 Offline...")
+                val translated: String
+                if (geminiEnabled) {
+                    setStatus("✨ Gemini traduzindo...")
+                    val result = geminiManager.translateWithContext(
+                        text, sourceCode, targetCode, currentContext.instruction)
+                    if (result.startsWith("Erro")) {
+                        setStatus("🔄 Gemini falhou → Offline")
+                        translated = translationManager.translate(text, sourceCode, targetCode, currentContext)
+                    } else {
+                        translated = result
+                        setStatus("✨ Gemini ✓")
+                    }
+                } else {
+                    setStatus("🔄 Traduzindo...")
                     translated = translationManager.translate(text, sourceCode, targetCode, currentContext)
                 }
 
@@ -170,9 +197,9 @@ class MainActivity : AppCompatActivity() {
                 if (isContinuousMode) {
                     speechManager.startListeningContinuous(
                         getLangCode(leftLangCode), getLangCode(rightLangCode))
-                    setStatus("🎙 Ouvindo...")
+                    setStatus(if (geminiEnabled) "✨ Gemini ON — Ouvindo..." else "🎙 Ouvindo...")
                 } else {
-                    setStatus("✅ ${currentContext.emoji} Traduzido. Toque para falar.")
+                    setStatus("✅ Traduzido. Toque para falar.")
                 }
             }
         }

@@ -195,6 +195,17 @@
             android:textSize="13sp"/>
     </LinearLayout>
 
+    <!-- Botão Gemini -->
+    <Button
+        android:id="@+id/btn_gemini"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="8dp"
+        android:text="🤖 Gemini OFF"
+        android:textSize="14sp"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#333333"/>
+
     <!-- Botão principal -->
     <Button
         android:id="@+id/btn_listen"
