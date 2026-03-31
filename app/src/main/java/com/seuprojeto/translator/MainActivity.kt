@@ -172,7 +172,7 @@ class MainActivity : AppCompatActivity() {
                     val result = geminiManager.translateWithContext(
                         text, sourceCode, targetCode, currentContext.instruction)
                     if (result.startsWith("Erro")) {
-                        setStatus("🔄 Gemini falhou → Offline")
+                        setStatus("🔄 Gemini falhou: $result")
                         translated = translationManager.translate(text, sourceCode, targetCode, currentContext)
                     } else {
                         translated = result
