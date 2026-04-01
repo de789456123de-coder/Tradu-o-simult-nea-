@@ -178,3 +178,7 @@ class AudioChannelManager(private val context: Context) {
     fun setLanguageRight(lang: String) { ttsRight?.language = langToLocale(lang) }
     fun release() { scope.cancel(); ttsLeft?.shutdown(); ttsRight?.shutdown() }
 }
+
+    fun setVolume(volume: Float) {
+        // Volume será aplicado no próximo TTS
+    }
