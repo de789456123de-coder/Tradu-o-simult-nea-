@@ -16,7 +16,7 @@ class GeminiManager {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
-    private val apiKey = "AIzaSyBJVXS8yMiJ_vB3mx88UAkbMH96Wvhe6O0"
+    private val apiKey = "GEMINI_KEY_PLACEHOLDER"
     private val apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
 
     suspend fun translateWithContext(
