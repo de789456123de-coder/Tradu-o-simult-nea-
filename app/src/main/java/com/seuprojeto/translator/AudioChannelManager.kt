@@ -177,16 +177,10 @@ class AudioChannelManager(private val context: Context) {
     fun setLanguageLeft(lang: String) { ttsLeft?.language = langToLocale(lang) }
     fun setLanguageRight(lang: String) { ttsRight?.language = langToLocale(lang) }
     fun release() { scope.cancel(); ttsLeft?.shutdown(); ttsRight?.shutdown() }
-}
 
     fun setVolume(volume: Float) {
-        // Volume será aplicado no próximo TTS
-    }
-
-    fun setVolume(volume: Float) {
-        // Volume aplicado no próximo TTS via AudioManager
         val am = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
         val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-        am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,
-            (maxVol * volume).toInt(), 0)
+        am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (maxVol * volume).toInt(), 0)
     }
+}
