@@ -182,3 +182,11 @@ class AudioChannelManager(private val context: Context) {
     fun setVolume(volume: Float) {
         // Volume será aplicado no próximo TTS
     }
+
+    fun setVolume(volume: Float) {
+        // Volume aplicado no próximo TTS via AudioManager
+        val am = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+            (maxVol * volume).toInt(), 0)
+    }
